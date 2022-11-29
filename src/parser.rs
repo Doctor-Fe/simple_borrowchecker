@@ -21,7 +21,6 @@ impl ExprParser {
     pub fn parse(eval: &mut Evaluater, data: &mut VecDeque<String>) -> Result<i32, Box<dyn Error>> {
         let mut list: Vec<(String, Vec<i32>)> = Vec::new();
         while !data.is_empty() {
-            println!("{list:?}");
             let n = match data.pop_front() {
                 Some(a) => match a.as_str() {
                     "(" => match Self::parse(eval, data) {
@@ -47,7 +46,7 @@ impl ExprParser {
             if let Some(a) = list.pop() {
                 match data.front() {
                     Some(b) => {
-                        if Self::get_priority(b) > Self::get_priority(&a.0) {
+                        if Self::get_priority(b) >= Self::get_priority(&a.0) {
                             let t = Self::calculate(&a.0, pack!([a.1, vec![n]].concat())).unwrap();
                             list.push((data.pop_front().unwrap(), vec![t]));
                         } else {
