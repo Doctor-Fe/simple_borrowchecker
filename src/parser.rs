@@ -1,8 +1,9 @@
-use std::{collections::VecDeque, error::Error, fmt::Display};
+use std::{collections::VecDeque, error::Error};
 
 use crate::pack;
 use crate::ret_err;
 
+use crate::errors::VariableNotFoundError;
 use crate::evaluater::Evaluater;
 
 pub struct ExprParser;
@@ -101,22 +102,3 @@ macro_rules! pack {
         Box::new($x.into_iter())
     };
 }
-
-#[derive(Debug)]
-struct VariableNotFoundError {
-    name: String,
-}
-
-impl VariableNotFoundError {
-    fn new(name: String) -> VariableNotFoundError {
-        VariableNotFoundError { name }
-    }
-}
-
-impl Display for VariableNotFoundError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Variable \"{}\" was not found.", self.name)
-    }
-}
-
-impl Error for VariableNotFoundError {}
