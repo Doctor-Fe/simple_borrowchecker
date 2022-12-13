@@ -19,3 +19,22 @@ impl Display for VariableNotFoundError {
 }
 
 impl Error for VariableNotFoundError {}
+
+#[derive(Debug)]
+pub struct BracketError {
+    bracket_type: String
+}
+
+impl BracketError {
+    pub fn new(bracket_type: String) -> BracketError {
+        BracketError { bracket_type }
+    }
+}
+
+impl Display for BracketError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "There are no corresponding brackets to \"{}\"", self.bracket_type)
+    }
+}
+
+impl Error for BracketError {}
