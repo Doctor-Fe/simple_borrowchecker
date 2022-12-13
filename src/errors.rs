@@ -1,6 +1,6 @@
 use std::{fmt::Display, error::Error};
 
-
+/// 未定義の変数を参照しようとしたときのエラーです。
 #[derive(Debug)]
 pub struct VariableNotFoundError {
     name: String,
@@ -20,6 +20,7 @@ impl Display for VariableNotFoundError {
 
 impl Error for VariableNotFoundError {}
 
+/// かっこの数が一致しないときのエラーです。
 #[derive(Debug)]
 pub struct BracketError<'a> {
     bracket_type: &'a str
@@ -39,6 +40,7 @@ impl <'a>Display for BracketError<'a> {
 
 impl <'a>Error for BracketError<'a> {}
 
+/// 無効な式が入力されたときのエラーです。
 #[derive(Debug)]
 pub struct InvalidExpressionError;
 
@@ -50,6 +52,7 @@ impl Display for InvalidExpressionError {
 
 impl Error for InvalidExpressionError {}
 
+/// 未実装要素を呼び出したときのエラーです。
 #[derive(Debug)]
 pub struct NotImplementedError;
 
