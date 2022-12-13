@@ -21,20 +21,42 @@ impl Display for VariableNotFoundError {
 impl Error for VariableNotFoundError {}
 
 #[derive(Debug)]
-pub struct BracketError {
-    bracket_type: String
+pub struct BracketError<'a> {
+    bracket_type: &'a str
 }
 
-impl BracketError {
-    pub fn new(bracket_type: String) -> BracketError {
+impl <'a>BracketError<'a> {
+    pub fn new(bracket_type: &'a str) -> BracketError<'a> {
         BracketError { bracket_type }
     }
 }
 
-impl Display for BracketError {
+impl <'a>Display for BracketError<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "There are no corresponding brackets to \"{}\"", self.bracket_type)
     }
 }
 
-impl Error for BracketError {}
+impl <'a>Error for BracketError<'a> {}
+
+#[derive(Debug)]
+pub struct InvalidExpressionError;
+
+impl Display for InvalidExpressionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Invalid expression detected.")
+    }
+}
+
+impl Error for InvalidExpressionError {}
+
+#[derive(Debug)]
+pub struct NotImplementedError;
+
+impl Display for NotImplementedError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Invalid expression detected.")
+    }
+}
+
+impl Error for NotImplementedError {}
