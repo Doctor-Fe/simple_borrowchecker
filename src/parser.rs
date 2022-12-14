@@ -28,8 +28,8 @@ impl ExprParser {
             vec!["!", "~", "&", "*"],
             vec!["*", "/", "%"],
             vec!["+", "-"],
-            vec!["==", "!="],
             vec!["&", "|", "^"],
+            vec!["==", "!="],
             vec!["&&, ||"],
             vec!["=", "+=", "-=", "*=", "/=", "%=", "|=", "&=", "^="]
         ];
@@ -45,20 +45,22 @@ impl ExprParser {
     /// * `cmd` - 式として扱う文字列
     pub fn parse(&mut self, cmd: String) -> Result<i32, Box<dyn Error>> {
         self.split_elements(cmd); // 要素単位に分解
-        let a = self.cmds.iter().filter(|a| **a == "(").count().cmp(&self.cmds.iter().filter(|a| **a == ")").count());
-        match a {
+        match self.cmds.iter().filter(|a| **a == "(").count().cmp(&self.cmds.iter().filter(|a| **a == ")").count()) {
             std::cmp::Ordering::Less => ret_err!(BracketError::new("(")),
             std::cmp::Ordering::Equal => {}, // NOOP
             std::cmp::Ordering::Greater => ret_err!(BracketError::new(")")),
         } // かっこが一致することを確認
         print!("{}", self.cmds.iter().fold("".to_string(), |a, b| format!("{}{}\n", a, b))); // デバッグ用
-        self.parse_middle_phase('\0') // 実行
+        let tmp = self.parse_middle_phase('\0'); // 実行
+        if tmp.is_err() {
+            self.cmds.clear();
+        }
+        return tmp;
     }
 
     fn split_elements(&mut self, cmd: String) {
         let mut word: Vec<char> = Vec::new();
         let mut is_string = false;
-        self.cmds.clear();
         for a in cmd.chars() {
             if is_string {
                 if a == '"' && if let Some(a) = word.last() {a != &'\\'} else {true} {
@@ -69,7 +71,7 @@ impl ExprParser {
                 match CharType::get_chartype(a) {
                     CharType::Normal => {
                         if !word.is_empty() && CharType::get_chartype(*word.last().unwrap()) != CharType::Normal {
-                            self.cmds.push_back(word.iter().collect::<String>());
+                            self.cmds.push_back(String::from_iter(&word));
                             word.clear();
                         }
                         word.push(a);
@@ -77,15 +79,15 @@ impl ExprParser {
                     CharType::Punctuation => {
                         if a == '"' {
                             is_string = !is_string;
-                        } else if !word.is_empty() && (word.len() > 1 || !word.last().unwrap().is_ascii_punctuation()) {
-                            self.cmds.push_back(word.iter().collect::<String>());
+                        } else if !word.is_empty() && (Self::get_priority(String::from_iter([word.clone(), vec![a]].concat()).as_str()).is_none()) {
+                            self.cmds.push_back(String::from_iter(&word));
                             word.clear();
                         }
                         word.push(a);
                     },
                     CharType::WhiteSpace => {
                         if !word.is_empty() {
-                            self.cmds.push_back(word.iter().collect::<String>());
+                            self.cmds.push_back(String::from_iter(&word));
                             word.clear();
                         }
                     },
@@ -93,7 +95,7 @@ impl ExprParser {
             }
         }
         if !word.is_empty() {
-            self.cmds.push_back(word.iter().collect::<String>());
+            self.cmds.push_back(String::from_iter(word));
         }
     }
 
@@ -102,6 +104,9 @@ impl ExprParser {
         while !self.cmds.is_empty() {
             let n = match self.cmds.pop_front() {
                 Some(a) => match a.as_str() {
+                    ";" => {
+                        break;
+                    }
                     "let" => {
                         match self.cmds.front() {
                             Some(a) => {
@@ -137,11 +142,17 @@ impl ExprParser {
                 },
                 None => unreachable!(),
             };
-            if let Some(a) = list.pop() {
+            if let Some(mut a) = list.pop() {
                 match self.cmds.front() {
                     Some(b) => {
+                        if b == ";" {
+                            self.cmds.pop_front();
+                            a.1.push(n);
+                            list.push(a);
+                            break;
+                        }
                         if Self::get_priority(b) >= Self::get_priority(&a.0) {
-                            let t = [a.1, vec![n]].concat().into_iter().reduce(|b, c| Self::calculate(&a.0, b, c).unwrap()).unwrap();
+                            let t = [a.1, vec![n]].concat().into_iter().reduce(|b, c| Self::calculate(&a.0, b, c).unwrap().unwrap()).unwrap();
                             list.push((self.cmds.pop_front().unwrap(), vec![t]));
                         } else {
                             list.push(a);
@@ -149,7 +160,7 @@ impl ExprParser {
                         }
                     }
                     None => {
-                        list.push((a.0.clone(), [a.1.clone(), vec![n]].concat()));
+                        list.push((a.0, [a.1, vec![n]].concat()));
                     }
                 }
             } else {
@@ -160,29 +171,31 @@ impl ExprParser {
             }
         }
         let (mut a, mut b) = list.pop().unwrap();
-        let mut num = b.into_iter().reduce(|c, d| Self::calculate(&a, c, d).unwrap()).unwrap();
+        let mut num = b.into_iter().reduce(|c, d| Self::calculate(&a, c, d).unwrap().unwrap()).unwrap();
         while !list.is_empty() {
             let c = list.pop().unwrap();
             a = c.0;
             b = [c.1, vec![num]].concat();
-            num = b.into_iter().reduce(|c, d| Self::calculate(&a, c, d).unwrap()).unwrap();
+            num = b.into_iter().reduce(|c, d| Self::calculate(&a, c, d).unwrap().unwrap()).unwrap();
         }
         return Ok(num);
     }
 
-    fn calculate(op: &str, left: i32, right: i32) -> Option<i32> {
+    fn calculate(op: &str, left: i32, right: i32) -> Result<Option<i32>, Box<dyn Error>> {
         match op {
-            "+" => Some(left + right),
-            "-" => Some(left - right),
-            "*" => Some(left * right),
-            "/" => Some(left / right),
-            "%" => Some(left % right),
-            "|" => Some(left | right),
-            "&" => Some(left & right),
-            "^" => Some(left ^ right),
+            "+" => Ok(Some(left + right)),
+            "-" => Ok(Some(left - right)),
+            "*" => Ok(Some(left * right)),
+            "/" => Ok(Some(left / right)),
+            "%" => Ok(Some(left % right)),
+            "|" => Ok(Some(left | right)),
+            "&" => Ok(Some(left & right)),
+            "^" => Ok(Some(left ^ right)),
+            "==" => Ok(Some(if left == right {1} else {0})),
+            "==" => Ok(Some(if left != right {1} else {0})),
             "=" => {
-                //
-                None
+                unimplemented!();
+                // Ok(None)
             }
             _ => unreachable!(),
         }

@@ -59,15 +59,3 @@ impl <'a>Display for InvalidExpressionError<'a> {
 }
 
 impl <'a>Error for InvalidExpressionError<'a> {}
-
-/// 未実装要素を呼び出したときのエラーです。
-#[derive(Debug)]
-pub struct NotImplementedError;
-
-impl Display for NotImplementedError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Invalid expression detected.")
-    }
-}
-
-impl Error for NotImplementedError {}
