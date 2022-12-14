@@ -129,7 +129,7 @@ impl ExprParser {
                         Err(_) => match self.get_variable(&a.to_string()) {
                             Some(a) => *a,
                             None => match Self::get_priority(&a) {
-                                Some(_) => ret_err!(VariableNotFoundError::new("Illegal operator.".to_string())),
+                                Some(_) => ret_err!(InvalidExpressionError::new("Illegal operator.")),
                                 None => ret_err!(VariableNotFoundError::new(a)),
                             },
                         },
