@@ -42,15 +42,23 @@ impl <'a>Error for BracketError<'a> {}
 
 /// 無効な式が入力されたときのエラーです。
 #[derive(Debug)]
-pub struct InvalidExpressionError;
+pub struct InvalidExpressionError<'a> {
+    message: &'a str
+}
 
-impl Display for InvalidExpressionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Invalid expression detected.")
+impl <'a>InvalidExpressionError<'a> {
+    pub fn new(str: &'a str) -> InvalidExpressionError<'a> {
+        InvalidExpressionError { message: str }
     }
 }
 
-impl Error for InvalidExpressionError {}
+impl <'a>Display for InvalidExpressionError<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Invalid expression detected.\n{}", self.message)
+    }
+}
+
+impl <'a>Error for InvalidExpressionError<'a> {}
 
 /// 未実装要素を呼び出したときのエラーです。
 #[derive(Debug)]

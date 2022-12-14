@@ -109,7 +109,7 @@ impl ExprParser {
                                 continue;
                             },
                             None => {
-                                ret_err!(InvalidExpressionError)
+                                ret_err!(InvalidExpressionError::new("Next of \"let\" keyword must be variable name."))
                             },
                         }
                     }
