@@ -51,7 +51,7 @@ impl ExprParser {
         print!("{}", self.cmds.iter().fold("".to_string(), |a, b| format!("{}{}\n", a, b))); // デバッグ用
         let result: Result<Option<i32>, Box<dyn Error>> = match self.cmds.iter().filter(|a| **a == "(").count().cmp(&self.cmds.iter().filter(|a| **a == ")").count()) {
             std::cmp::Ordering::Less => Err(Box::new(BracketError::new("("))),
-            std::cmp::Ordering::Equal => self.parse_middle_phase('\0'),
+            std::cmp::Ordering::Equal => self.parse_middle_phase(),
             std::cmp::Ordering::Greater => Err(Box::new(BracketError::new(")"))),
         }; // かっこが一致することを確認
         if result.is_err() {
@@ -103,12 +103,12 @@ impl ExprParser {
         }
     }
 
-    fn parse_middle_phase(&mut self, bracket_flag: char) -> Result<Option<i32>, Box<dyn Error>> {
+    fn parse_middle_phase(&mut self) -> Result<Option<i32>, Box<dyn Error>> {
         let mut list: Vec<(String, VecDeque<ElementType>)> = Vec::new();
         while !self.cmds.is_empty() {
             let n: ElementType = match self.cmds.pop_front() {
                 Some(a) => match a.as_str() {
-                    ";" => {
+                    ";" | ")" => {
                         break;
                     }
                     "let" => {
@@ -126,18 +126,10 @@ impl ExprParser {
                             },
                         }
                     }
-                    "(" => match self.parse_middle_phase('(') {
+                    "(" => match self.parse_middle_phase() {
                         Ok(a) => Immediate(a.unwrap()),
                         Err(a) => return Err(a),
                     },
-                    ")" => {
-                        println!("{}, {}", bracket_flag, bracket_flag == '(');
-                        if bracket_flag == '(' {
-                            break;
-                        } else {
-                            ret_err!(BracketError::new("("));
-                        }
-                    }
                     _ => match a.parse::<i32>() {
                         Ok(b) => Immediate(b),
                         Err(_) => match self.get_variable(&a.to_string()) {
