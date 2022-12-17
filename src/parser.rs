@@ -1,9 +1,12 @@
 use std::collections::HashMap;
 use std::{collections::VecDeque, error::Error};
 
-use crate::errors::{BracketError, VariableNotFoundError, InvalidExpressionError};
+use crate::errors::{BracketError, VariableNotFoundError, InvalidExpressionError, NoInputError, OperationWithVoidError};
+use crate::parser::ElementType::Immediate;
+use crate::parser::ElementType::Variable;
 
 use crate::ret_err;
+use crate::vec_deque;
 
 /// 式を解釈するパーサです。現時点ではインタプリタとしてのみ動作します。
 pub struct ExprParser {
@@ -23,7 +26,7 @@ impl ExprParser {
     /// * `op` - 優先順位を取得する演算子
     fn get_priority(op: &str) -> Option<usize> {
         let priorities = [
-            vec!["(", ")", "{", "}"],
+            // vec!["(", ")", "{", "}"],
             vec!["++", "--"],
             vec!["!", "~", "&", "*"],
             vec!["*", "/", "%"],
@@ -43,21 +46,22 @@ impl ExprParser {
 
     /// 文字列を式として解釈します。
     /// * `cmd` - 式として扱う文字列
-    pub fn parse(&mut self, cmd: String) -> Result<i32, Box<dyn Error>> {
+    pub fn parse(&mut self, cmd: String) -> Result<Option<i32>, Box<dyn Error>> {
         self.split_elements(cmd); // 要素単位に分解
-        match self.cmds.iter().filter(|a| **a == "(").count().cmp(&self.cmds.iter().filter(|a| **a == ")").count()) {
-            std::cmp::Ordering::Less => ret_err!(BracketError::new("(")),
-            std::cmp::Ordering::Equal => {}, // NOOP
-            std::cmp::Ordering::Greater => ret_err!(BracketError::new(")")),
-        } // かっこが一致することを確認
         print!("{}", self.cmds.iter().fold("".to_string(), |a, b| format!("{}{}\n", a, b))); // デバッグ用
-        let tmp = self.parse_middle_phase('\0'); // 実行
-        if tmp.is_err() {
+        let result: Result<Option<i32>, Box<dyn Error>> = match self.cmds.iter().filter(|a| **a == "(").count().cmp(&self.cmds.iter().filter(|a| **a == ")").count()) {
+            std::cmp::Ordering::Less => Err(Box::new(BracketError::new("("))),
+            std::cmp::Ordering::Equal => self.parse_middle_phase('\0'),
+            std::cmp::Ordering::Greater => Err(Box::new(BracketError::new(")"))),
+        }; // かっこが一致することを確認
+        if result.is_err() {
             self.cmds.clear();
         }
-        return tmp;
+        return result;
     }
 
+    /// 入力された文字列を要素毎に分割します。
+    /// * `cmd` - 分割する文字列
     fn split_elements(&mut self, cmd: String) {
         let mut word: Vec<char> = Vec::new();
         let mut is_string = false;
@@ -99,10 +103,10 @@ impl ExprParser {
         }
     }
 
-    fn parse_middle_phase(&mut self, bracket_flag: char) -> Result<i32, Box<dyn Error>> {
-        let mut list: Vec<(String, Vec<i32>)> = Vec::new();
+    fn parse_middle_phase(&mut self, bracket_flag: char) -> Result<Option<i32>, Box<dyn Error>> {
+        let mut list: Vec<(String, VecDeque<ElementType>)> = Vec::new();
         while !self.cmds.is_empty() {
-            let n = match self.cmds.pop_front() {
+            let n: ElementType = match self.cmds.pop_front() {
                 Some(a) => match a.as_str() {
                     ";" => {
                         break;
@@ -110,8 +114,12 @@ impl ExprParser {
                     "let" => {
                         match self.cmds.front() {
                             Some(a) => {
-                                self.create_variable(a.clone());
-                                continue;
+                                if a.parse::<i32>().is_err() {
+                                    self.create_variable(a.clone());
+                                    continue;
+                                } else {
+                                    ret_err!(InvalidExpressionError::new("Next of \"let\" keyword must be variable name."))
+                                }
                             },
                             None => {
                                 ret_err!(InvalidExpressionError::new("Next of \"let\" keyword must be variable name."))
@@ -119,10 +127,11 @@ impl ExprParser {
                         }
                     }
                     "(" => match self.parse_middle_phase('(') {
-                        Ok(a) => a,
+                        Ok(a) => Immediate(a.unwrap()),
                         Err(a) => return Err(a),
                     },
                     ")" => {
+                        println!("{}, {}", bracket_flag, bracket_flag == '(');
                         if bracket_flag == '(' {
                             break;
                         } else {
@@ -130,11 +139,13 @@ impl ExprParser {
                         }
                     }
                     _ => match a.parse::<i32>() {
-                        Ok(b) => b,
+                        Ok(b) => Immediate(b),
                         Err(_) => match self.get_variable(&a.to_string()) {
-                            Some(a) => *a,
+                            Some(_) => Variable(a),
                             None => match Self::get_priority(&a) {
-                                Some(_) => ret_err!(InvalidExpressionError::new("Illegal operator.")),
+                                Some(_) => {
+                                    ret_err!(InvalidExpressionError::new("Illegal operator."))
+                                },
                                 None => ret_err!(VariableNotFoundError::new(a)),
                             },
                         },
@@ -145,67 +156,129 @@ impl ExprParser {
             if let Some(mut a) = list.pop() {
                 match self.cmds.front() {
                     Some(b) => {
-                        if b == ";" {
+                        if b == ";" || b == ")" {
                             self.cmds.pop_front();
-                            a.1.push(n);
+                            a.1.push_back(n);
                             list.push(a);
                             break;
                         }
                         if Self::get_priority(b) >= Self::get_priority(&a.0) {
-                            let t = [a.1, vec![n]].concat().into_iter().reduce(|b, c| Self::calculate(&a.0, b, c).unwrap().unwrap()).unwrap();
-                            list.push((self.cmds.pop_front().unwrap(), vec![t]));
+                            a.1.push_back(n);
+                            let t = self.try_calculate_all(a);
+                            match t {
+                                Ok(s) => {
+                                    match s {
+                                        Some(b) => list.push((self.cmds.pop_front().unwrap(), vec_deque!(Immediate(b)))),
+                                        None => ret_err!(OperationWithVoidError),
+                                    }
+                                },
+                                Err(e) => return Err(e),
+                            }
                         } else {
                             list.push(a);
-                            list.push((self.cmds.pop_front().unwrap(), vec![n]));
+                            list.push((self.cmds.pop_front().unwrap(), vec_deque!(n)));
                         }
                     }
                     None => {
-                        list.push((a.0, [a.1, vec![n]].concat()));
+                        a.1.push_back(n);
+                        list.push(a);
                     }
                 }
             } else {
                 match self.cmds.pop_front() {
-                    Some(a) => list.push((a, vec![n])),
-                    None => return Ok(n),
+                    Some(a) => list.push((a, vec_deque!(n))),
+                    None => return Ok(n.to_i32(self)),
                 }
             }
         }
-        let (mut a, mut b) = list.pop().unwrap();
-        let mut num = b.into_iter().reduce(|c, d| Self::calculate(&a, c, d).unwrap().unwrap()).unwrap();
-        while !list.is_empty() {
-            let c = list.pop().unwrap();
-            a = c.0;
-            b = [c.1, vec![num]].concat();
-            num = b.into_iter().reduce(|c, d| Self::calculate(&a, c, d).unwrap().unwrap()).unwrap();
+        match list.pop() {
+            Some(b) => {
+                let mut num = self.try_calculate_all(b);
+                loop {
+                    if list.is_empty() {
+                        return num;
+                    }
+                    match num {
+                        Ok(a) => {
+                            match a {
+                                Some(b) => {
+                                    let mut c = list.pop().unwrap();
+                                    c.1.push_back(Immediate(b));
+                                    num = self.try_calculate_all(c);
+                                },
+                                None => ret_err!(OperationWithVoidError),
+                            }
+                        },
+                        Err(e) => return Err(e),
+                    }
+                }
+            },
+            None => {
+                ret_err!(NoInputError);
+            },
         }
-        return Ok(num);
     }
 
-    fn calculate(op: &str, left: i32, right: i32) -> Result<Option<i32>, Box<dyn Error>> {
+    fn try_calculate_all(&mut self, mut data: (String, VecDeque<ElementType>)) -> Result<Option<i32>, Box<dyn Error>> {
+        let mut num = data.1.pop_front().unwrap();
+        while !data.1.is_empty() {
+            let d = data.1.pop_front().unwrap();
+            match self.calculate_binomial(&data.0, num, d) {
+                Ok(a) => {
+                    num = match a {
+                        Some(a) => Immediate(a),
+                        None => return Ok(None),
+                    }
+                },
+                Err(e) => return Err(e),
+            }
+        }
+        return Ok(num.to_i32(self));
+    }
+
+    fn calculate_binomial(&mut self, op: &str, left: ElementType, right: ElementType) -> Result<Option<i32>, Box<dyn Error>> {
         match op {
-            "+" => Ok(Some(left + right)),
-            "-" => Ok(Some(left - right)),
-            "*" => Ok(Some(left * right)),
-            "/" => Ok(Some(left / right)),
-            "%" => Ok(Some(left % right)),
-            "|" => Ok(Some(left | right)),
-            "&" => Ok(Some(left & right)),
-            "^" => Ok(Some(left ^ right)),
-            "==" => Ok(Some(if left == right {1} else {0})),
-            "==" => Ok(Some(if left != right {1} else {0})),
+            "+" => left.operate(right, self, |a, b| a + b).map(|a| Some(a)),
+            "-" => left.operate(right, self, |a, b| a - b).map(|a| Some(a)),
+            "*" => left.operate(right, self, |a, b| a * b).map(|a| Some(a)),
+            "/" => left.operate(right, self, |a, b| a / b).map(|a| Some(a)),
+            "%" => left.operate(right, self, |a, b| a % b).map(|a| Some(a)),
+            "|" => left.operate(right, self, |a, b| a | b).map(|a| Some(a)),
+            "&" => left.operate(right, self, |a, b| a & b).map(|a| Some(a)),
+            "^" => left.operate(right, self, |a, b| a ^ b).map(|a| Some(a)),
+            "==" => left.operate(right, self, |a, b| if a == b {1} else {0}).map(|a| Some(a)),
+            "!=" => left.operate(right, self, |a, b| if a != b {1} else {0}).map(|a| Some(a)),
             "=" => {
-                unimplemented!();
-                // Ok(None)
+                if let Variable(v) = left {
+                    let c = right.to_i32(self);
+                    match self.get_variable_mut(&v) {
+                        Some(a) => {
+                            match c {
+                                Some(b) => {
+                                    *a = b;
+                                    return Ok(Some(b));
+                                },
+                                None => todo!(),
+                            }
+                        },
+                        None => {ret_err!(VariableNotFoundError::new(v))},
+                    }
+                }
+                ret_err!(InvalidExpressionError::new("The left-hand must be variable."));
             }
             _ => unreachable!(),
         }
     }
 
-    fn get_variable(&self, name: &String) -> Option<&i32> {
+    pub fn get_variable_mut(&mut self, name: &String) -> Option<&mut i32> {
+        self.variables.get_mut(name)
+    }
+
+    pub fn get_variable(&self, name: &String) -> Option<&i32> {
         self.variables.get(name)
     }
 
-    fn create_variable(&mut self, name: String){//, num: i32) {
+    pub fn create_variable(&mut self, name: String){
         self.variables.insert(name, 0);
     }
 }
@@ -214,6 +287,17 @@ impl ExprParser {
 macro_rules! ret_err {
     ($x: expr) => {
         return Err(Box::new($x))
+    };
+}
+
+#[macro_export]
+macro_rules! vec_deque {
+    ($x: expr) => {
+        {
+            let mut tmp = VecDeque::new();
+            tmp.push_back($x);
+            tmp
+        }
     };
 }
 
@@ -236,5 +320,32 @@ impl CharType {
         } else {
             CharType::Normal
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ElementType {
+    Variable(String),
+    Immediate(i32),
+}
+
+impl ElementType {
+    fn to_i32(self, expr: &ExprParser) -> Option<i32> {
+        match self {
+            ElementType::Variable(s) => expr.get_variable(&s).map(|a| *a),
+            ElementType::Immediate(i) => Some(i),
+        }
+    }
+
+    fn operate<F>(self, other: ElementType, expr: &ExprParser, e: F) -> Result<i32, Box<dyn Error>>
+    where
+        F: Fn(i32, i32) -> i32,
+    {
+        if let Some(left) = self.to_i32(expr) {
+            if let Some(right) = other.to_i32(expr) {
+                return Ok(e(left, right));
+            }
+        }
+        ret_err!(InvalidExpressionError::new("Cannot operate with void"))
     }
 }

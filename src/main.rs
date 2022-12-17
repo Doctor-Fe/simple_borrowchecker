@@ -15,7 +15,7 @@ fn main() {
         _ = writer.flush();
         _ = std::io::stdin().read_line(&mut s);
         match parser.parse(s) {
-            Ok(a) => println!("Succeed: {}", a),
+            Ok(a) => println!("Succeed: {:?}", a),
             Err(a) => println!("Error: {}", a),
         }
     }

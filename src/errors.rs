@@ -59,3 +59,27 @@ impl <'a>Display for InvalidExpressionError<'a> {
 }
 
 impl <'a>Error for InvalidExpressionError<'a> {}
+
+/// 入力がなかったときのエラーです。
+#[derive(Debug)]
+pub struct NoInputError;
+
+impl Display for NoInputError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "No inputs.")
+    }
+}
+
+impl Error for NoInputError {}
+
+/// voidと演算しようとしたときのエラーです。
+#[derive(Debug)]
+pub struct OperationWithVoidError;
+
+impl Display for OperationWithVoidError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Cannot operate with void.")
+    }
+}
+
+impl Error for OperationWithVoidError {}
