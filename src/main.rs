@@ -1,16 +1,21 @@
-use evaluater::Evaluater;
+use std::io::{BufWriter, Write};
 
-mod evaluater;
+use crate::parser::ExprParser;
+
+mod errors;
 mod parser;
 
 fn main() {
-    let mut eval: Evaluater = Evaluater::new();
+    let mut writer = BufWriter::new(std::io::stdout().lock());
+    let mut parser = ExprParser::new();
     loop {
         let mut s: String = String::new();
+        _ = write!(writer, "> ");
+        _ = writer.flush();
         _ = std::io::stdin().read_line(&mut s);
-        eval.split_elements(s);
-        let mut t = eval.pop_command().unwrap();
-        let data = parser::ExprParser::parse(&mut eval, &mut t);
-        println!("{:?}", data);
+        match parser.parse(&s) {
+            Ok(a) => _ = writeln!(writer, "Succeed: {:?}", a),
+            Err(a) => _ = writeln!(writer, "Error: {}", a),
+        }
     }
 }
