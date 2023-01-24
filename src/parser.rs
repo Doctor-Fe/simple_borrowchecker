@@ -22,12 +22,21 @@ impl ExprParser {
         }
     }
 
+    pub fn clear(&mut self) {
+        self.cmds.clear();
+    }
+
+    pub fn clear_all(&mut self) {
+        self.variables.clear();
+        self.clear();
+    }
+
     /// 演算子の優先順位を返します。
     /// * `op` - 優先順位を取得する演算子
     fn get_priority(op: &str) -> Option<usize> {
         let priorities = [
             // vec!["(", ")", "{", "}"],
-            vec!["++", "--"],
+            // vec!["++", "--"],
             vec!["!", "~", "&", "*"],
             vec!["*", "/", "%"],
             vec!["+", "-"],
@@ -48,16 +57,23 @@ impl ExprParser {
     /// * `cmd` - 式として扱う文字列
     pub fn parse(&mut self, cmd: &String) -> Result<Option<i32>, Box<dyn Error>> {
         self.split_elements(cmd); // 要素単位に分解
-        print!("{}", self.cmds.iter().fold("".to_string(), |a, b| format!("{}{}\n", a, b))); // デバッグ用
-        let result: Result<Option<i32>, Box<dyn Error>> = match self.cmds.iter().filter(|a| **a == "(").count().cmp(&self.cmds.iter().filter(|a| **a == ")").count()) {
-            std::cmp::Ordering::Less => Err(Box::new(BracketError::new("("))),
-            std::cmp::Ordering::Equal => self.parse_middle_phase(),
-            std::cmp::Ordering::Greater => Err(Box::new(BracketError::new(")"))),
+        match self.cmds.iter().filter(|a| **a == "(").count().cmp(&self.cmds.iter().filter(|a| **a == ")").count()) {
+            std::cmp::Ordering::Less => ret_err!(BracketError::new("(")),
+            std::cmp::Ordering::Equal => {
+                let mut p = 0;
+                loop {
+                    match self.parse_middle_phase(&mut p) {
+                        Ok(a) => {
+                            if p >= self.cmds.len() {
+                                return Ok(a);
+                            }
+                        },
+                        Err(b) => return Err(b),
+                    }
+                }
+            },
+            std::cmp::Ordering::Greater => ret_err!(BracketError::new(")")),
         }; // かっこが一致することを確認
-        if result.is_err() {
-            self.cmds.clear();
-        }
-        return result;
     }
 
     /// 入力された文字列を要素毎に分割します。
@@ -103,14 +119,14 @@ impl ExprParser {
         }
     }
 
-    fn parse_middle_phase(&mut self) -> Result<Option<i32>, Box<dyn Error>> {
+    fn parse_middle_phase(&mut self, pointer: &mut usize) -> Result<Option<i32>, Box<dyn Error>> {
         let mut list: Vec<(String, VecDeque<ElementType>)> = Vec::new();
-        while !self.cmds.is_empty() {
-            let n: ElementType = match self.cmds.pop_front() {
+        while *pointer < self.cmds.len() {
+            let n: ElementType = match {*pointer += 1; self.cmds.get(*pointer - 1)} {
                 Some(a) => match a.as_str() {
                     ";" | ")" => break,
                     "let" => {
-                        if let Some(a) = self.cmds.front() {
+                        if let Some(a) = self.cmds.get(*pointer) {
                             if a.parse::<i32>().is_err() {
                                 self.create_variable(a.clone());
                                 continue;
@@ -118,14 +134,14 @@ impl ExprParser {
                         }
                         ret_err!(InvalidExpressionError::new("Next of \"let\" keyword must be variable name."))
                     },
-                    "(" => Immediate(self.parse_middle_phase()?.unwrap()),
+                    "(" => Immediate(self.parse_middle_phase({*pointer += 1; pointer})?.unwrap()),
                     _ => match a.parse::<i32>() {
                         Ok(b) => Immediate(b),
                         Err(_) => match self.get_variable(&a.to_string()) {
-                            Some(_) => Variable(a),
+                            Some(_) => Variable(a.clone()),
                             None => match Self::get_priority(&a) {
                                 Some(_) => ret_err!(InvalidExpressionError::new("Illegal operator.")),
-                                None => ret_err!(VariableNotFoundError::new(a)),
+                                None => ret_err!(VariableNotFoundError::new(a.clone())),
                             },
                         },
                     },
@@ -133,10 +149,10 @@ impl ExprParser {
                 None => unreachable!(),
             };
             if let Some(mut a) = list.pop() {
-                match self.cmds.front() {
+                match self.cmds.get(*pointer) {
                     Some(upcoming) => {
                         if upcoming == ";" || upcoming == ")" {
-                            self.cmds.pop_front();
+                            {*pointer += 1; self.cmds.get(*pointer - 1)};
                             a.1.push_back(n);
                             list.push(a);
                             break;
@@ -144,12 +160,12 @@ impl ExprParser {
                         if upcoming != &a.0 && Self::get_priority(upcoming) >= Self::get_priority(&a.0) {
                             a.1.push_back(n);
                             match self.try_calculate_all(a)? {
-                                Some(b) => list.push((self.cmds.pop_front().unwrap(), vec_deque!(Immediate(b)))),
+                                Some(b) => list.push(({*pointer += 1; self.cmds.get(*pointer - 1)}.unwrap().clone(), vec_deque!(Immediate(b)))),
                                 None => ret_err!(OperationWithVoidError),
                             }
                         } else {
                             list.push(a);
-                            list.push((self.cmds.pop_front().unwrap(), vec_deque!(n)));
+                            list.push(({*pointer += 1; self.cmds.get(*pointer - 1)}.unwrap().clone(), vec_deque!(n)));
                         }
                     }
                     None => {
@@ -158,8 +174,8 @@ impl ExprParser {
                     }
                 }
             } else {
-                match self.cmds.pop_front() {
-                    Some(a) => list.push((a, vec_deque!(n))),
+                match {*pointer += 1;self.cmds.get(*pointer - 1)} {
+                    Some(a) => list.push((a.clone(), vec_deque!(n))),
                     None => return Ok(n.to_i32(self)),
                 }
             }
@@ -218,34 +234,25 @@ impl ExprParser {
 
     fn calculate_binomial(&mut self, op: &str, left: ElementType, right: ElementType) -> Result<Option<i32>, Box<dyn Error>> {
         match op {
-            "+" => left.operate(right, self, |a, b| a + b).map(|a| Some(a)),
-            "-" => left.operate(right, self, |a, b| a - b).map(|a| Some(a)),
-            "*" => left.operate(right, self, |a, b| a * b).map(|a| Some(a)),
-            "/" => left.operate(right, self, |a, b| a / b).map(|a| Some(a)),
-            "%" => left.operate(right, self, |a, b| a % b).map(|a| Some(a)),
-            "|" => left.operate(right, self, |a, b| a | b).map(|a| Some(a)),
-            "&" => left.operate(right, self, |a, b| a & b).map(|a| Some(a)),
-            "^" => left.operate(right, self, |a, b| a ^ b).map(|a| Some(a)),
-            "==" => left.operate(right, self, |a, b| if a == b {1} else {0}).map(|a| Some(a)),
-            "!=" => left.operate(right, self, |a, b| if a != b {1} else {0}).map(|a| Some(a)),
-            "=" => {
-                if let Variable(v) = left {
-                    let c = right.to_i32(self);
-                    match self.get_variable_mut(&v) {
-                        Some(a) => {
-                            match c {
-                                Some(b) => {
-                                    *a = b;
-                                    return Ok(Some(b));
-                                },
-                                None => todo!(),
-                            }
-                        },
-                        None => {ret_err!(VariableNotFoundError::new(v))},
-                    }
-                }
-                ret_err!(InvalidExpressionError::new("The left-hand must be variable."));
-            }
+            "+" => left.op_some(self, right, |a, b| a + b).map(|a| Some(a)),
+            "-" => left.op_some(self, right, |a, b| a - b).map(|a| Some(a)),
+            "*" => left.op_some(self, right, |a, b| a * b).map(|a| Some(a)),
+            "/" => left.op_some(self, right, |a, b| a / b).map(|a| Some(a)),
+            "%" => left.op_some(self, right, |a, b| a % b).map(|a| Some(a)),
+            "|" => left.op_some(self, right, |a, b| a | b).map(|a| Some(a)),
+            "&" => left.op_some(self, right, |a, b| a & b).map(|a| Some(a)),
+            "^" => left.op_some(self, right, |a, b| a ^ b).map(|a| Some(a)),
+            "==" => left.op_some(self, right, |a, b| if a == b {1} else {0}).map(|a| Some(a)),
+            "!=" => left.op_some(self, right, |a, b| if a != b {1} else {0}).map(|a| Some(a)),
+            "=" => left.op_let(self, right, |a, b| *a = b),
+            "+=" => left.op_let(self, right, |a, b| *a += b),
+            "-=" => left.op_let(self, right, |a, b| *a -= b),
+            "*=" => left.op_let(self, right, |a, b| *a *= b),
+            "/=" => left.op_let(self, right, |a, b| *a /= b),
+            "%=" => left.op_let(self, right, |a, b| *a %= b),
+            "|=" => left.op_let(self, right, |a, b| *a |= b),
+            "&=" => left.op_let(self, right, |a, b| *a &= b),
+            "^=" => left.op_let(self, right, |a, b| *a ^= b),
             _ => unreachable!(),
         }
     }
@@ -258,11 +265,14 @@ impl ExprParser {
         self.variables.get(name)
     }
 
+    /// 変数を作成します。
+    /// - `name` - 新しく作成する変数名
     pub fn create_variable(&mut self, name: String){
         self.variables.insert(name, 0);
     }
 }
 
+/// `Error` を実装した構造体をボックス化して `Result` 列挙型に入れたものを返すマクロです。
 #[macro_export]
 macro_rules! ret_err {
     ($x: expr) => {
@@ -270,6 +280,7 @@ macro_rules! ret_err {
     };
 }
 
+/// 1つの要素が入った `VecDeque` を生成するマクロです。
 #[macro_export]
 macro_rules! vec_deque {
     ($x: expr) => {
@@ -281,6 +292,7 @@ macro_rules! vec_deque {
     };
 }
 
+/// 文字の種類を定義します。要素に分割する時に使用します。
 #[derive(Debug, PartialEq)]
 pub enum CharType {
     /// 変数名、即値などを表します。
@@ -303,6 +315,7 @@ impl CharType {
     }
 }
 
+/// 式の要素の種類を定義します。
 #[derive(Debug, Clone)]
 pub enum ElementType {
     Variable(String),
@@ -310,6 +323,7 @@ pub enum ElementType {
 }
 
 impl ElementType {
+    /// 数値へ変換します。
     fn to_i32(self, expr: &ExprParser) -> Option<i32> {
         match self {
             ElementType::Variable(s) => expr.get_variable(&s).map(|a| *a),
@@ -317,15 +331,46 @@ impl ElementType {
         }
     }
 
-    fn operate<F>(self, other: ElementType, expr: &ExprParser, e: F) -> Result<i32, Box<dyn Error>>
+    /// 数値を返す演算を実行します。
+    /// - `expr` - 処理を呼び出すパーサのインスタンス
+    /// - `right` - 右辺に来る `ElementType` 構造体
+    /// - `op` - 具体的な処理内容を記述するクロージャ
+    fn op_some<F>(self, expr: &ExprParser, other: ElementType, op: F) -> Result<i32, Box<dyn Error>>
     where
         F: Fn(i32, i32) -> i32,
     {
         if let Some(left) = self.to_i32(expr) {
             if let Some(right) = other.to_i32(expr) {
-                return Ok(e(left, right));
+                return Ok(op(left, right));
             }
         }
         ret_err!(InvalidExpressionError::new("Cannot operate with void"))
     }
+
+    /// 代入処理を実行します。
+    /// - `expr` - 処理を呼び出すパーサのインスタンス
+    /// - `right` - 右辺に来る `ElementType` 構造体
+    /// - `op` - 具体的な処理内容を記述するクロージャ
+    fn op_let<F>(self, expr: &mut ExprParser, right: ElementType, op: F) -> Result<Option<i32>, Box<dyn Error>>
+    where
+        F: Fn(&mut i32, i32),
+    {
+        if let Variable(v) = self {
+            let c = right.to_i32(expr);
+            match expr.get_variable_mut(&v) {
+                Some(a) => {
+                    match c {
+                        Some(b) => {
+                            op(a, b);
+                            return Ok(None);
+                        },
+                        None => todo!(),
+                    }
+                },
+                None => {ret_err!(VariableNotFoundError::new(v))},
+            }
+        }
+        ret_err!(InvalidExpressionError::new("The left-hand must be variable."));
+    }
+
 }
