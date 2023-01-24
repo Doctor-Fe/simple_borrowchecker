@@ -35,8 +35,6 @@ impl ExprParser {
     /// * `op` - 優先順位を取得する演算子
     fn get_priority(op: &str) -> Option<usize> {
         let priorities = [
-            // vec!["(", ")", "{", "}"],
-            // vec!["++", "--"],
             vec!["!", "~", "&", "*"],
             vec!["*", "/", "%"],
             vec!["+", "-"],
