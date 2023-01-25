@@ -33,28 +33,22 @@ impl ExprParser {
         self.clear();
     }
 
-    /// 二項演算子の優先順位を返します。
-    /// * `op` - 優先順位を取得する演算子
-    fn get_priority(op: &str) -> Option<usize> {
-        let priorities = [
-            vec!["*", "/", "%"],
-            vec!["+", "-"],
-            vec!["&", "|", "^"],
-            vec!["==", "!="],
-            vec!["&&, ||"],
-            vec!["=", "+=", "-=", "*=", "/=", "%=", "|=", "&=", "^="]
-        ];
-        for a in 0..priorities.len() {
-            if priorities[a].contains(&op) {
-                return Some(a);
-            }
-        }
-        return None;
+    /// 可変な状態で変数を取得します。
+    /// - `name` - 変数名
+    pub fn get_variable_mut(&mut self, name: &String) -> Option<&mut i32> {
+        self.variables.get_mut(name)
+    }
+    
+    /// 変数を取得します。
+    /// - `name` - 変数名
+    pub fn get_variable(&self, name: &String) -> Option<&i32> {
+        self.variables.get(name)
     }
 
-    fn is_monomial(op: &str) -> bool {
-        let ops = ["+", "-", "&", "*", "!", "~"];
-        return ops.contains(&op);
+    /// 変数を作成します。
+    /// - `name` - 新しく作成する変数名
+    pub fn create_variable(&mut self, name: String){
+        self.variables.insert(name, 0);
     }
 
     /// 文字列を式として解釈します。
@@ -224,6 +218,30 @@ impl ExprParser {
         }
     }
 
+    /// 二項演算子の優先順位を返します。
+    /// * `op` - 優先順位を取得する演算子
+    fn get_priority(op: &str) -> Option<usize> {
+        let priorities = [
+            vec!["*", "/", "%"],
+            vec!["+", "-"],
+            vec!["&", "|", "^"],
+            vec!["==", "!="],
+            vec!["&&, ||"],
+            vec!["=", "+=", "-=", "*=", "/=", "%=", "|=", "&=", "^="]
+        ];
+        for a in 0..priorities.len() {
+            if priorities[a].contains(&op) {
+                return Some(a);
+            }
+        }
+        return None;
+    }
+
+    fn is_monomial(op: &str) -> bool {
+        let ops = ["+", "-", "&", "*", "!", "~"];
+        return ops.contains(&op);
+    }
+
     fn try_calculate_all(&mut self, mut data: (String, VecDeque<ElementType>)) -> Result<Option<i32>, Box<dyn Error>> {
         if data.0 != "=" {
             let mut num = data.1.pop_front().unwrap();
@@ -271,20 +289,6 @@ impl ExprParser {
             "^=" => left.op_let(self, right, |a, b| *a ^= b),
             _ => unreachable!(),
         }
-    }
-
-    pub fn get_variable_mut(&mut self, name: &String) -> Option<&mut i32> {
-        self.variables.get_mut(name)
-    }
-
-    pub fn get_variable(&self, name: &String) -> Option<&i32> {
-        self.variables.get(name)
-    }
-
-    /// 変数を作成します。
-    /// - `name` - 新しく作成する変数名
-    pub fn create_variable(&mut self, name: String){
-        self.variables.insert(name, 0);
     }
 }
 
