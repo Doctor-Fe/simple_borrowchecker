@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::{collections::VecDeque, error::Error};
 
-use crate::errors::{BracketError, InvalidExpressionError, NoInputError, OperationWithVoidError, VariableNotFoundError};
+use crate::errors::{BracketError, InvalidExpressionError, NoInputError, OperationError, VariableNotFoundError};
 use crate::parser::ElementType::Immediate;
 use crate::parser::ElementType::Monomial;
 use crate::parser::ElementType::Variable;
@@ -199,7 +199,7 @@ impl ExprParser {
                             a.1.push_back(n);
                             match self.try_calculate_all(a)? {
                                 Some(b) => list.push(({*pointer += 1; self.cmds.get(*pointer - 1)}.unwrap().clone(), vec_deque!(Immediate(b)))),
-                                None => ret_err!(OperationWithVoidError),
+                                None => ret_err!(OperationError::operate_with_void()),
                             }
                         } else {
                             list.push(a);
@@ -233,7 +233,7 @@ impl ExprParser {
                                     c.1.push_back(Immediate(b));
                                     num = self.try_calculate_all(c);
                                 },
-                                None => ret_err!(OperationWithVoidError),
+                                None => ret_err!(OperationError::operate_with_void()),
                             }
                         },
                         Err(e) => return Err(e),
@@ -396,6 +396,8 @@ impl ElementType {
                     "-" => -a,
                     "~" => !a,
                     "!" => if a == 0 {1} else {0},
+                    // "*" => 
+                    // "&" => 
                     _ => unreachable!()
                 })
             }

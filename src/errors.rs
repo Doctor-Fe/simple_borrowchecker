@@ -74,12 +74,39 @@ impl Error for NoInputError {}
 
 /// voidと演算しようとしたときのエラーです。
 #[derive(Debug)]
-pub struct OperationWithVoidError;
+pub struct OperationError {
+    error_type: OperationErrorType
+}
 
-impl Display for OperationWithVoidError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Cannot operate with void.")
+impl OperationError {
+    pub fn invalid_dereference() -> OperationError {
+        OperationError { error_type: OperationErrorType::InvalidDereference }
+    }
+
+    pub fn operate_with_void() -> OperationError {
+        OperationError { error_type: OperationErrorType::WithVoid }
     }
 }
 
-impl Error for OperationWithVoidError {}
+impl Display for OperationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.error_type)
+    }
+}
+
+impl Error for OperationError {}
+
+#[derive(Debug)]
+pub enum OperationErrorType {
+    WithVoid,
+    InvalidDereference
+}
+
+impl Display for OperationErrorType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", match self {
+            Self::WithVoid => "Cannot operate with void.",
+            Self::InvalidDereference => "Invalid dereference."
+        })
+    }
+}
