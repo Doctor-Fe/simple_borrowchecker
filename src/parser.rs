@@ -12,14 +12,14 @@ use crate::vec_deque;
 
 /// 式を解釈するパーサです。現時点ではインタプリタとしてのみ動作します。
 pub struct ExprParser {
-    cmds: VecDeque<String>,
+    cmds: Vec<String>,
     variables: HashMap<String, i32>,
 }
 
 impl ExprParser {
     pub fn new() -> ExprParser {
         ExprParser {
-            cmds: VecDeque::new(),
+            cmds: Vec::new(),
             variables: HashMap::new(),
         }
     }
@@ -89,7 +89,7 @@ impl ExprParser {
                 match CharType::get_chartype(a) {
                     CharType::Normal => {
                         if !word.is_empty() && CharType::get_chartype(*word.last().unwrap()) != CharType::Normal {
-                            self.cmds.push_back(String::from_iter(&word));
+                            self.cmds.push(String::from_iter(&word));
                             word.clear();
                         }
                         word.push(a);
@@ -98,14 +98,14 @@ impl ExprParser {
                         if a == '"' {
                             is_string = !is_string;
                         } else if !word.is_empty() && (Self::get_priority(String::from_iter([word.clone(), vec![a]].concat()).as_str()).is_none()) {
-                            self.cmds.push_back(String::from_iter(&word));
+                            self.cmds.push(String::from_iter(&word));
                             word.clear();
                         }
                         word.push(a);
                     },
                     CharType::WhiteSpace => {
                         if !word.is_empty() {
-                            self.cmds.push_back(String::from_iter(&word));
+                            self.cmds.push(String::from_iter(&word));
                             word.clear();
                         }
                     },
@@ -113,7 +113,7 @@ impl ExprParser {
             }
         }
         if !word.is_empty() {
-            self.cmds.push_back(String::from_iter(word));
+            self.cmds.push(String::from_iter(word));
         }
     }
 
