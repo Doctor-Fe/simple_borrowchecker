@@ -77,9 +77,36 @@ impl ExprParser {
     /// 入力された文字列を要素毎に分割します。
     /// * `cmd` - 分割する文字列
     fn split_elements(&mut self, cmd: &String) {
+        let mut tmp = cmd.chars().rev().collect::<Vec<char>>();
         let mut word: Vec<char> = Vec::new();
         let mut is_string = false;
-        for a in cmd.chars() {
+        let mut comment_out = 0;
+        while !tmp.is_empty() {
+            let a = tmp.pop().unwrap();
+            if comment_out != 0 {
+                if comment_out == 1 && a == '\n' {
+                    comment_out = 0;
+                } else if comment_out == 2 && a == '*' && tmp.last() == Some(&'/') {
+                    tmp.pop();
+                    comment_out = 0;
+                }
+                continue;
+            }
+            
+            if a == '/' {
+                match tmp.last() {
+                    Some(&'/') => {
+                        comment_out = 1;
+                        continue;
+                    }
+                    Some(&'*') => {
+                        comment_out = 2;
+                        continue;
+                    },
+                    _ => {}
+                }
+            }
+            
             if is_string {
                 if a == '"' && if let Some(a) = word.last() {a != &'\\'} else {true} {
                     is_string = !is_string;
