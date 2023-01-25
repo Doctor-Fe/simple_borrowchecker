@@ -1,8 +1,10 @@
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::{collections::VecDeque, error::Error};
 
-use crate::errors::{BracketError, VariableNotFoundError, InvalidExpressionError, NoInputError, OperationWithVoidError};
+use crate::errors::{BracketError, InvalidExpressionError, NoInputError, OperationWithVoidError, VariableNotFoundError};
 use crate::parser::ElementType::Immediate;
+use crate::parser::ElementType::Monomial;
 use crate::parser::ElementType::Variable;
 
 use crate::ret_err;
@@ -31,11 +33,10 @@ impl ExprParser {
         self.clear();
     }
 
-    /// 演算子の優先順位を返します。
+    /// 二項演算子の優先順位を返します。
     /// * `op` - 優先順位を取得する演算子
     fn get_priority(op: &str) -> Option<usize> {
         let priorities = [
-            vec!["!", "~", "&", "*"],
             vec!["*", "/", "%"],
             vec!["+", "-"],
             vec!["&", "|", "^"],
@@ -49,6 +50,11 @@ impl ExprParser {
             }
         }
         return None;
+    }
+
+    fn is_monomial(op: &str) -> bool {
+        let ops = ["+", "-", "&", "*", "!", "~"];
+        return ops.contains(&op);
     }
 
     /// 文字列を式として解釈します。
@@ -119,6 +125,7 @@ impl ExprParser {
 
     fn parse_middle_phase(&mut self, pointer: &mut usize) -> Result<Option<i32>, Box<dyn Error>> {
         let mut list: Vec<(String, VecDeque<ElementType>)> = Vec::new();
+        let mut monomial_flag: Option<String> = None;
         while *pointer < self.cmds.len() {
             let n: ElementType = match {*pointer += 1; self.cmds.get(*pointer - 1)} {
                 Some(a) => match a.as_str() {
@@ -134,13 +141,24 @@ impl ExprParser {
                     },
                     "(" => Immediate(self.parse_middle_phase({*pointer += 1; pointer})?.unwrap()),
                     _ => match a.parse::<i32>() {
-                        Ok(b) => Immediate(b),
+                        Ok(b) => {
+                            if monomial_flag.is_some() {
+                                Monomial(monomial_flag.clone().unwrap(), Rc::new(Immediate(b)))
+                            } else {
+                                Immediate(b)
+                            }
+                        },
                         Err(_) => match self.get_variable(&a.to_string()) {
                             Some(_) => Variable(a.clone()),
-                            None => match Self::get_priority(&a) {
-                                Some(_) => ret_err!(InvalidExpressionError::new("Illegal operator.")),
-                                None => ret_err!(VariableNotFoundError::new(a.clone())),
-                            },
+                            None => if Self::is_monomial(&a) {
+                                monomial_flag = Some(a.to_string());
+                                continue;
+                            } else {
+                                match Self::get_priority(&a) {
+                                    Some(_) => ret_err!(InvalidExpressionError::new("Illegal operator.")),
+                                    None => ret_err!(VariableNotFoundError::new(a.clone())),
+                                }
+                            }
                         },
                     },
                 },
@@ -318,14 +336,24 @@ impl CharType {
 pub enum ElementType {
     Variable(String),
     Immediate(i32),
+    Monomial(String, Rc<ElementType>)
 }
 
 impl ElementType {
     /// 数値へ変換します。
-    fn to_i32(self, expr: &ExprParser) -> Option<i32> {
+    fn to_i32(&self, expr: &ExprParser) -> Option<i32> {
         match self {
-            ElementType::Variable(s) => expr.get_variable(&s).map(|a| *a),
-            ElementType::Immediate(i) => Some(i),
+            ElementType::Variable(s) => expr.get_variable(s).map(|a| *a),
+            ElementType::Immediate(i) => Some(*i),
+            ElementType::Monomial(s, e) => {
+                e.to_i32(expr).map(|a| match s.as_str() {
+                    "+" => a,
+                    "-" => -a,
+                    "~" => !a,
+                    "!" => if a == 0 {1} else {0},
+                    _ => unreachable!()
+                })
+            }
         }
     }
 
