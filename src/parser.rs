@@ -144,6 +144,7 @@ impl ExprParser {
         }
     }
 
+    /// 分割された要素を解釈する関数です。
     fn parse_middle_phase(&mut self, pointer: &mut usize) -> Result<Option<i32>, Box<dyn Error>> {
         let mut list: Vec<(String, VecDeque<ElementType>)> = Vec::new();
         let mut monomial_flag: Option<String> = None;
@@ -251,10 +252,11 @@ impl ExprParser {
         let priorities = [
             vec!["*", "/", "%"],
             vec!["+", "-"],
+            vec![">>", "<<"],
             vec!["&", "|", "^"],
             vec!["==", "!="],
             vec!["&&, ||"],
-            vec!["=", "+=", "-=", "*=", "/=", "%=", "|=", "&=", "^="]
+            vec!["=", "+=", "-=", "*=", "/=", "%=", "|=", "&=", "^=", ">>=", "<<="]
         ];
         for a in 0..priorities.len() {
             if priorities[a].contains(&op) {
@@ -264,6 +266,8 @@ impl ExprParser {
         return None;
     }
 
+    /// 単項演算子か判定する関数です。
+    /// - `op` - 判定する演算子
     fn is_monomial(op: &str) -> bool {
         let ops = ["+", "-", "&", "*", "!", "~"];
         return ops.contains(&op);
@@ -303,6 +307,8 @@ impl ExprParser {
             "|" => left.op_some(self, right, |a, b| a | b).map(|a| Some(a)),
             "&" => left.op_some(self, right, |a, b| a & b).map(|a| Some(a)),
             "^" => left.op_some(self, right, |a, b| a ^ b).map(|a| Some(a)),
+            ">>" => left.op_some(self, right, |a, b| a >> b).map(|a| Some(a)),
+            "<<" => left.op_some(self, right, |a, b| a << b).map(|a| Some(a)),
             "==" => left.op_some(self, right, |a, b| if a == b {1} else {0}).map(|a| Some(a)),
             "!=" => left.op_some(self, right, |a, b| if a != b {1} else {0}).map(|a| Some(a)),
             "=" => left.op_let(self, right, |a, b| *a = b),
@@ -314,6 +320,8 @@ impl ExprParser {
             "|=" => left.op_let(self, right, |a, b| *a |= b),
             "&=" => left.op_let(self, right, |a, b| *a &= b),
             "^=" => left.op_let(self, right, |a, b| *a ^= b),
+            ">>=" => left.op_let(self, right, |a, b| *a >>= b),
+            "<<=" => left.op_let(self, right, |a, b| *a <<= b),
             _ => unreachable!(),
         }
     }
