@@ -20,7 +20,7 @@ fn main() {
                 if let Err(a) = stream.read_to_string(&mut s) {
                     _ = writeln!(writer, "Error: {}", a);
                 } else {
-                    println!("{}", s);
+                    _ = writeln!(writer, "{}", s);
                     match parser.parse(&s) {
                         Ok(a) => _ = writeln!(writer, "Succeed: {:?}", a),
                         Err(a) => _ = writeln!(writer, "Error: {}", a),

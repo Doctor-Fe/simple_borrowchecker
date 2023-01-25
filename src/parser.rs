@@ -254,8 +254,8 @@ impl ExprParser {
             vec!["+", "-"],
             vec![">>", "<<"],
             vec!["&", "|", "^"],
-            vec!["==", "!="],
-            vec!["&&, ||"],
+            vec!["==", "!=", ">", "<", ">=", "<="],
+            vec!["&&", "||"],
             vec!["=", "+=", "-=", "*=", "/=", "%=", "|=", "&=", "^=", ">>=", "<<="]
         ];
         for a in 0..priorities.len() {
@@ -311,6 +311,12 @@ impl ExprParser {
             "<<" => left.op_some(self, right, |a, b| a << b).map(|a| Some(a)),
             "==" => left.op_some(self, right, |a, b| if a == b {1} else {0}).map(|a| Some(a)),
             "!=" => left.op_some(self, right, |a, b| if a != b {1} else {0}).map(|a| Some(a)),
+            ">" => left.op_some(self, right, |a, b| if a > b {1} else {0}).map(|a| Some(a)),
+            "<" => left.op_some(self, right, |a, b| if a < b {1} else {0}).map(|a| Some(a)),
+            ">=" => left.op_some(self, right, |a, b| if a >= b {1} else {0}).map(|a| Some(a)),
+            "<=" => left.op_some(self, right, |a, b| if a <= b {1} else {0}).map(|a| Some(a)),
+            "&&" => left.op_some(self, right, |a, b| if a != 0 && b != 0 {1} else {0}).map(|a| Some(a)),
+            "||" => left.op_some(self, right, |a, b| if a != 0 || b != 0 {1} else {0}).map(|a| Some(a)),
             "=" => left.op_let(self, right, |a, b| *a = b),
             "+=" => left.op_let(self, right, |a, b| *a += b),
             "-=" => left.op_let(self, right, |a, b| *a -= b),
