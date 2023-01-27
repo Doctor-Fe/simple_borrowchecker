@@ -215,9 +215,10 @@ impl ExprParser {
                         if upcoming != &a.0 && Self::get_priority(upcoming) >= Self::get_priority(&a.0) {
                             a.1.push_back(n);
                             let tmp = self.try_calculate_all(a)?;
-                            match tmp {
-                                VarType::Uninitialized | VarType::Void => ret_err!(OperationError::operate_with_void()),
-                                _ => list.push(({*pointer += 1; self.cmds.get(*pointer - 1)}.unwrap().clone(), vec_deque![Immediate(tmp)])),
+                            if tmp.is_empty() {
+                                ret_err!(OperationError)
+                            } else {
+                                list.push(({*pointer += 1; self.cmds.get(*pointer - 1)}.unwrap().clone(), vec_deque![Immediate(tmp)])),
                             }
                         } else {
                             list.push(a);
@@ -245,13 +246,12 @@ impl ExprParser {
                     }
                     match num {
                         Ok(a) => {
-                            match a {
-                                VarType::Uninitialized | VarType::Void => ret_err!(OperationError::operate_with_void()),
-                                _ => {
-                                    let mut c = list.pop().unwrap();
-                                    c.1.push_back(Immediate(a));
-                                    num = self.try_calculate_all(c);
-                                },
+                            if a.is_empty() {
+                                ret_err!(OperationError)
+                            } else {
+                                let mut c = list.pop().unwrap();
+                                c.1.push_back(Immediate(a));
+                                num = self.try_calculate_all(c);
                             }
                         },
                         Err(e) => return Err(e),
