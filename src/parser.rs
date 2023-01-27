@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::{collections::VecDeque, error::Error};
 
-use crate::errors::{BracketError, InvalidExpressionError, NoInputError, OperationError, VariableNotFoundError};
+use crate::errors::{BracketError, InvalidExpressionError, NoInputError, OperationError, VariableNotFoundError, ReferenceError};
 use crate::parser::ElementType::Immediate;
 use crate::parser::ElementType::Monomial;
 use crate::parser::ElementType::Variable;
@@ -218,7 +218,7 @@ impl ExprParser {
                             if tmp.is_empty() {
                                 ret_err!(OperationError)
                             } else {
-                                list.push(({*pointer += 1; self.cmds.get(*pointer - 1)}.unwrap().clone(), vec_deque![Immediate(tmp)])),
+                                list.push(({*pointer += 1; self.cmds.get(*pointer - 1)}.unwrap().clone(), vec_deque![Immediate(tmp)]));
                             }
                         } else {
                             list.push(a);
@@ -416,11 +416,11 @@ impl ElementType {
                 if s == "&" {
                     match e.get() {
                         Variable(v) => Ok(VarType::Pointer(v.clone())),
-                        _ => ret_err!(OperationError::invalid_dereference())
+                        _ => ret_err!(ReferenceError::invalid_dereference())
                     }
                 } else {
                     match e.to_vartype(expr)? {
-                        VarType::Uninitialized | VarType::Void => ret_err!(OperationError::operate_with_void()),
+                        VarType::Uninitialized | VarType::Void => ret_err!(OperationError),
                         VarType::Integer(i) => {
                             match s.as_str() {
                                     "+" => Ok(VarType::Integer(i)),

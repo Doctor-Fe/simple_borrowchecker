@@ -74,39 +74,50 @@ impl Error for NoInputError {}
 
 /// voidと演算しようとしたときのエラーです。
 #[derive(Debug)]
-pub struct OperationError {
-    error_type: OperationErrorType
-}
-
-impl OperationError {
-    pub fn invalid_dereference() -> OperationError {
-        OperationError { error_type: OperationErrorType::InvalidDereference }
-    }
-
-    pub fn operate_with_void() -> OperationError {
-        OperationError { error_type: OperationErrorType::WithVoid }
-    }
-}
+pub struct OperationError;
 
 impl Display for OperationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.error_type)
+        write!(f, "Cannot operate with void.")
     }
 }
 
 impl Error for OperationError {}
 
 #[derive(Debug)]
-pub enum OperationErrorType {
-    WithVoid,
-    InvalidDereference
+pub struct ReferenceError {
+    error_type: ReferenceErrorType
 }
 
-impl Display for OperationErrorType {
+impl ReferenceError {
+    pub fn invalid_dereference() -> Self {
+        ReferenceError { error_type: ReferenceErrorType::InvalidDereference }
+    }
+
+    pub fn uninitialized() -> Self {
+        ReferenceError { error_type: ReferenceErrorType::Uninitialized }
+    }
+}
+
+impl Display for ReferenceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.error_type)
+    }
+}
+
+impl Error for ReferenceError {}
+
+#[derive(Debug)]
+pub enum ReferenceErrorType {
+    InvalidDereference,
+    Uninitialized,
+}
+
+impl Display for ReferenceErrorType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", match self {
-            Self::WithVoid => "Cannot operate with void.",
-            Self::InvalidDereference => "Invalid dereference."
+            ReferenceErrorType::InvalidDereference => "Invalid dereference.",
+            ReferenceErrorType::Uninitialized => "Variable was uninitialized.",
         })
     }
 }
