@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::{collections::VecDeque, error::Error};
 
+use log::debug;
+
 use crate::errors::{BracketError, InvalidExpressionError, NoInputError, OperationError, VariableNotFoundError, ReferenceError};
 use crate::parser::ElementType::Immediate;
 use crate::parser::ElementType::Monomial;
@@ -55,6 +57,7 @@ impl ExprParser {
     /// * `cmd` - 式として扱う文字列
     pub fn parse(&mut self, cmd: &String) -> Result<VarType, Box<dyn Error>> {
         self.split_elements(cmd); // 要素単位に分解
+        debug!("{:?}", self.cmds);
         match self.cmds.iter().filter(|a| **a == "(").count().cmp(&self.cmds.iter().filter(|a| **a == ")").count()) {
             std::cmp::Ordering::Less => ret_err!(BracketError::new("(")),
             std::cmp::Ordering::Equal => {

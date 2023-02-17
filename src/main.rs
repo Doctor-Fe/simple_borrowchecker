@@ -6,6 +6,8 @@ mod errors;
 mod parser;
 
 fn main() {
+    init_logger();
+    
     let mut writer = BufWriter::new(std::io::stdout().lock());
     let mut parser = ExprParser::new();
     loop {
@@ -31,4 +33,49 @@ fn main() {
             Err(e) => _ = writeln!(writer, "Error: {}", e),
         }
     }
+}
+
+fn init_logger() {
+    let base_config = fern::Dispatch::new();
+
+    let debug = fern::Dispatch::new()
+        .level(log::LevelFilter::Trace)
+        .format(|out, message, record| {
+            out.finish(format_args! {
+                "[{}] {}:{} {} {}",
+                record.level(),
+                record.file().unwrap(),
+                record.line().unwrap(),
+                chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                message
+            })
+        })
+        .chain(fern::log_file("debug.log").unwrap());
+
+    let info = fern::Dispatch::new()
+        .level(log::LevelFilter::Info)
+        .format(|out, message, record| {
+            out.finish(format_args! {
+                "[{}] {}:{} {} {}",
+                record.level(),
+                record.file().unwrap(),
+                record.line().unwrap(),
+                chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                message
+            })
+        })
+        .chain(fern::log_file("info.log").unwrap());
+
+    base_config
+        .chain(debug)
+        .chain(info)
+        .apply()
+        .unwrap();
+}
+
+#[macro_export]
+macro_rules! error_writeln {
+    ($stream: expr, $error: expr) => {
+        _ = writeln!($stream, "Error: {}", $error)
+    };
 }
