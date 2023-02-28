@@ -2,8 +2,7 @@ use std::{io::{BufWriter, Write, Read, BufReader}, fs::File};
 
 use crate::parser::ExprParser;
 
-mod errors;
-mod parser;
+pub mod parser;
 
 fn main() {
     init_logger();
@@ -22,10 +21,9 @@ fn main() {
                 if let Err(a) = stream.read_to_string(&mut s) {
                     _ = writeln!(writer, "Error: {}", a);
                 } else {
-                    _ = writeln!(writer, "{}", s);
                     match parser.parse(&s) {
                         Ok(a) => _ = writeln!(writer, "Succeed: {:?}", a),
-                        Err(a) => _ = writeln!(writer, "Error: {}", a),
+                        Err(a) => error_writeln!(writer, a),
                     }
                     parser.clear_all();
                 }
@@ -35,7 +33,9 @@ fn main() {
     }
 }
 
+/// ロガーのセットアップをする関数です。
 fn init_logger() {
+    let time = chrono::Local::now().format("%Y%m%d_%H%M%S");
     let base_config = fern::Dispatch::new();
 
     let debug = fern::Dispatch::new()
@@ -50,25 +50,10 @@ fn init_logger() {
                 message
             })
         })
-        .chain(fern::log_file("debug.log").unwrap());
-
-    let info = fern::Dispatch::new()
-        .level(log::LevelFilter::Info)
-        .format(|out, message, record| {
-            out.finish(format_args! {
-                "[{}] {}:{} {} {}",
-                record.level(),
-                record.file().unwrap(),
-                record.line().unwrap(),
-                chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
-                message
-            })
-        })
-        .chain(fern::log_file("info.log").unwrap());
+        .chain(fern::log_file(format!("debug_{time}.log")).unwrap());
 
     base_config
         .chain(debug)
-        .chain(info)
         .apply()
         .unwrap();
 }

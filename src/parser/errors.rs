@@ -42,23 +42,29 @@ impl <'a>Error for BracketError<'a> {}
 
 /// 無効な式が入力されたときのエラーです。
 #[derive(Debug)]
-pub struct InvalidExpressionError<'a> {
-    message: &'a str
+pub struct InvalidExpressionError {
+    message: String
 }
 
-impl <'a>InvalidExpressionError<'a> {
-    pub fn new(str: &'a str) -> InvalidExpressionError<'a> {
-        InvalidExpressionError { message: str }
+impl InvalidExpressionError {
+    pub fn new(str: String) -> InvalidExpressionError {
+        InvalidExpressionError { message: str.to_string() }
     }
 }
 
-impl <'a>Display for InvalidExpressionError<'a> {
+impl From<&str> for InvalidExpressionError {
+    fn from(value: &str) -> Self {
+        InvalidExpressionError::new(value.to_string())
+    }
+}
+
+impl Display for InvalidExpressionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Invalid expression detected.\n{}", self.message)
     }
 }
 
-impl <'a>Error for InvalidExpressionError<'a> {}
+impl Error for InvalidExpressionError {}
 
 /// 入力がなかったときのエラーです。
 #[derive(Debug)]
@@ -120,4 +126,15 @@ impl Display for ReferenceErrorType {
             ReferenceErrorType::Uninitialized => "Variable was uninitialized.",
         })
     }
+}
+
+/// `Error` を実装した構造体をボックス化して `Result` 列挙型に入れたものを返すマクロです。
+#[macro_export]
+macro_rules! ret_err {
+    ($x: expr) => {
+        {
+            log::error!("{}", $x);
+            return Err(Box::new($x));
+        }
+    };
 }
