@@ -1,4 +1,6 @@
-use log::trace;
+use std::fmt::Display;
+
+use log::info;
 
 use super::ExprParser;
 
@@ -18,7 +20,7 @@ impl ExprParser {
     /// 変数を作成します。
     /// - `name` - 新しく作成する変数名
     pub fn create_variable(&mut self, name: String){
-        trace!("Variable \"{}\" was created.", name);
+        info!("Variable \"{}\" was created.", name);
         if !self.variables.contains_key(&name) {
             self.variables.insert(name, VarType::Uninitialized);
         }
@@ -47,5 +49,17 @@ impl VarType {
             VarType::Uninitialized | VarType::Void => true,
             _ => false
         }
+    }
+
+    /// 新しくVarType::Stringを作成します。
+    /// * `data` - 文字列の内容
+    pub fn new_string(data: &String) -> Self {
+        VarType::String(data.trim_matches('"').to_string())
+    }
+}
+
+impl Display for VarType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
     }
 }

@@ -7,8 +7,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::{collections::VecDeque, error::Error};
 
-use log::debug;
-use log::trace;
+use log::{debug, info, trace};
 
 use errors::{BracketError, InvalidExpressionError, NoInputError, OperationError, VariableNotFoundError, ReferenceError};
 use ElementType::Immediate;
@@ -20,6 +19,7 @@ use crate::ret_err;
 use crate::vec_deque;
 
 /// 式を解釈するパーサです。現時点ではインタプリタとしてのみ動作します。
+#[derive(Debug)]
 pub struct ExprParser {
     cmds: Vec<String>,
     variables: HashMap<String, VarType>,
@@ -45,6 +45,7 @@ impl ExprParser {
     /// 文字列を式として解釈します。
     /// * `cmd` - 式として扱う文字列
     pub fn parse(&mut self, cmd: &String) -> Result<VarType, Box<dyn Error>> {
+        info!("Start parsing...");
         self.split_elements(cmd); // 要素単位に分解
         debug!("Splitted elements: {:?}", self.cmds);
         match self.cmds.iter().filter(|a| **a == "(").count().cmp(&self.cmds.iter().filter(|a| **a == ")").count()) {
@@ -55,6 +56,7 @@ impl ExprParser {
                     match self.parse_sentence(&mut p) {
                         Ok(a) => {
                             if p >= self.cmds.len() {
+                                info!("Successfully parsed (Result: {})", a);
                                 return Ok(a);
                             }
                         },
@@ -70,15 +72,13 @@ impl ExprParser {
     /// 分割された要素を解釈する関数です。
     /// * `pointer` - 次に解釈する単語を指すポインタ
     fn parse_sentence(&mut self, pointer: &mut usize) -> Result<VarType, Box<dyn Error>> {
+        info!("Start parsing as sentence from {}.", pointer);
         let mut last = VarType::Void;
         while *pointer < self.cmds.len() {
-            trace!("Pointer: {}", pointer);
-            match self.cmds.get(*pointer) {
-                Some(a) => match a.as_str() {
-                    ";" | "}" => {
-                        break;
-                    },
-                    "let" => {
+            trace!("Pointer: {} ({})", pointer, self.cmds[*pointer]);
+            match self.cmds.get(*pointer).map(|a| a.as_str()) {
+                Some("}") | Some(";") => break,
+                Some("let") => {
                         if let Some(a) = self.cmds.get(*pointer + 1) {
                             if a.parse::<i32>().is_err() {
                                 self.create_variable(a.clone());
@@ -89,17 +89,19 @@ impl ExprParser {
                             ret_err!(InvalidExpressionError::from("Next of \"let\" keyword must be variable name."))
                         }
                     },
-                    "{" => {
-                        *pointer += 1;
-                        last = self.parse_sentence(pointer)?
-                    },
-                    _ => {
-                        last = self.parse_expression(pointer)?;
-                    },
+                Some("{") => {
+                    *pointer += 1;
+                    last = self.parse_sentence(pointer)?;
+                },
+                Some(_) => {
+                    last = self.parse_expression(pointer)?;
                 },
                 None => unreachable!(),
             }
-            *pointer += 1;
+            match self.cmds.get(*pointer).map(|a| a.as_str()) {
+                Some("}") => break,
+                _ => *pointer += 1,
+            }
         }
         if self.cmds.get(*pointer) == Some(&String::from(";")) {
             last = VarType::Void;
@@ -110,20 +112,25 @@ impl ExprParser {
     /// 式を解釈する関数です。
     /// * `pointer` - 次に解釈する単語を指すポインタ
     fn parse_expression(&mut self, pointer: &mut usize) -> Result<VarType, Box<dyn Error>> {
+        info!("Start parsing as expression from {}.", pointer);
         let mut list: Vec<(String, VecDeque<ElementType>)> = Vec::new();
         let mut monomial_flag: Option<String> = None;
         while *pointer < self.cmds.len() {
             trace!("Pointer: {} ({})", pointer, self.cmds[*pointer]);
             let n: ElementType = match self.cmds.get(*pointer) {
                 Some(a) => match a.as_str() {
-                    ";" | ")" => {
-                        trace!("Stopped by {}", a);
+                    ";" | ")" | "}" => {
                         break;
                     },
                     "(" => {
                         *pointer += 1;
                         Immediate(self.parse_expression(pointer)?)
                     },
+                    "{" => {
+                        *pointer += 1;
+                        let tmp = Immediate(self.parse_sentence(pointer)?);
+                        tmp
+                    }
                     _ => match a.parse::<i32>() {
                         Ok(b) => {
                             if monomial_flag.is_some() {
@@ -151,9 +158,9 @@ impl ExprParser {
                                         let mut t = a.chars();
                                         if t.next() == Some('"') && t.last() == Some('"') {
                                             if monomial_flag.is_some() {
-                                                Monomial(monomial_flag.clone().unwrap(), Rc::new(Immediate(VarType::String(a.clone()))))
+                                                Monomial(monomial_flag.clone().unwrap(), Rc::new(Immediate(VarType::new_string(&a))))
                                             } else {
-                                                Immediate(VarType::String(a.clone()))
+                                                Immediate(VarType::new_string(&a))
                                             }
                                         } else {
                                             ret_err!(VariableNotFoundError::new(a.clone()))
@@ -166,13 +173,11 @@ impl ExprParser {
                 },
                 None => unreachable!(),
             };
+            *pointer += 1;
             if let Some(mut a) = list.pop() {
-                match self.cmds.get(*pointer + 1) {
+                match self.cmds.get(*pointer) {
                     Some(upcoming) => {
-                        if upcoming == ";" || upcoming == ")" {
-                            if upcoming == ")" {
-                                *pointer += 1;
-                            }
+                        if upcoming == ";" || upcoming == ")" || upcoming == "}" {
                             a.1.push_back(n);
                             list.push(a);
                             break;
@@ -184,11 +189,11 @@ impl ExprParser {
                             if tmp.is_empty() {
                                 ret_err!(OperationError)
                             } else {
-                                list.push((self.cmds.get(*pointer + 1).unwrap().clone(), vec_deque![Immediate(tmp)]));
+                                list.push((self.cmds.get(*pointer).unwrap().clone(), vec_deque![Immediate(tmp)]));
                             }
                         } else {
                             list.push(a);
-                            list.push((self.cmds.get(*pointer + 1).unwrap().clone(), vec_deque!(n)));
+                            list.push((self.cmds.get(*pointer).unwrap().clone(), vec_deque!(n)));
                         }
                     }
                     None => {
@@ -196,12 +201,13 @@ impl ExprParser {
                         list.push(a);
                     }
                 }
-                *pointer += 1;
             } else {
-                trace!("Upcoming: {:?}", self.cmds.get(*pointer + 1));
-                match self.cmds.get(*pointer + 1) {
+                trace!("Upcoming: {:?}", self.cmds.get(*pointer));
+                match self.cmds.get(*pointer) {
                     Some(upcoming) => {
-                        *pointer += 1;
+                        if upcoming == ";" || upcoming == ")" || upcoming == "}" {
+                            return n.to_vartype(self);
+                        }
                         list.push((upcoming.clone(), vec_deque!(n)));
                     },
                     None => return n.to_vartype(self),

@@ -7,15 +7,15 @@ impl ExprParser {
         let mut tmp = cmd.chars().rev().collect::<Vec<char>>();
         let mut word: Vec<char> = Vec::new();
         let mut is_string = false;
-        let mut comment_out = 0;
+        let mut comment_out: Option<CommentType> = None;
         while !tmp.is_empty() {
             let a = tmp.pop().unwrap();
-            if comment_out != 0 {
-                if comment_out == 1 && a == '\n' {
-                    comment_out = 0;
-                } else if comment_out == 2 && a == '*' && tmp.last() == Some(&'/') {
+            if let Some(c) = comment_out {
+                if c == CommentType::SingleLine && a == '\n' {
+                    comment_out = None;
+                } else if a == '*' && tmp.last() == Some(&'/') {
                     tmp.pop();
-                    comment_out = 0;
+                    comment_out = None;
                 }
                 continue;
             }
@@ -23,11 +23,11 @@ impl ExprParser {
             if a == '/' {
                 match tmp.last() {
                     Some(&'/') => {
-                        comment_out = 1;
+                        comment_out = Some(CommentType::SingleLine);
                         continue;
                     }
                     Some(&'*') => {
-                        comment_out = 2;
+                        comment_out = Some(CommentType::MultiLine);
                         continue;
                     },
                     _ => {}
@@ -51,9 +51,11 @@ impl ExprParser {
                     CharType::Punctuation => {
                         if a == '"' {
                             is_string = !is_string;
-                        } else if !word.is_empty() && (Self::get_priority(String::from_iter([word.clone(), vec![a]].concat()).as_str()).is_none()) {
-                            self.cmds.push(String::from_iter(&word));
-                            word.clear();
+                        } else {
+                            if !word.is_empty() && (Self::get_priority(String::from_iter([word.clone(), vec![a]].concat()).as_str()).is_none()) {
+                                self.cmds.push(String::from_iter(&word));
+                                word.clear();
+                            }
                         }
                         word.push(a);
                     },
@@ -94,4 +96,10 @@ impl CharType {
             CharType::Normal
         }
     }
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+enum CommentType {
+    SingleLine,
+    MultiLine
 }

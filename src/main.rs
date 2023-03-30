@@ -19,16 +19,16 @@ fn main() {
                 let mut stream = BufReader::new(a);
                 s.clear();
                 if let Err(a) = stream.read_to_string(&mut s) {
-                    _ = writeln!(writer, "Error: {}", a);
+                    error_writeln!(writer, a);
                 } else {
                     match parser.parse(&s) {
-                        Ok(a) => _ = writeln!(writer, "Succeed: {:?}", a),
+                        Ok(a) => _ = writeln!(writer, "Succeed: {}", a),
                         Err(a) => error_writeln!(writer, a),
                     }
                     parser.clear_all();
                 }
             },
-            Err(e) => _ = writeln!(writer, "Error: {}", e),
+            Err(e) => error_writeln!(writer, e),
         }
     }
 }
@@ -50,7 +50,7 @@ fn init_logger() {
                 message
             })
         })
-        .chain(fern::log_file(format!("debug_{time}.log")).unwrap());
+        .chain(fern::log_file(format!("logs/debug_{time}.log")).unwrap());
 
     base_config
         .chain(debug)
