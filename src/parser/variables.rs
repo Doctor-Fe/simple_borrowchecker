@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, rc::Rc};
 
 use log::info;
 
@@ -28,7 +28,7 @@ impl ExprParser {
 }
 
 /// 変数として格納可能な値を保持する構造体です。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum VarType {
     /// 未初期化の変数であることを表します。
     Uninitialized,
@@ -39,7 +39,7 @@ pub enum VarType {
     /// 文字列であることを表します。
     String(String),
     /// ポインタであることを表します。
-    Pointer(String),
+    Pointer(Rc<VarType>),
 }
 
 impl VarType {
@@ -53,7 +53,7 @@ impl VarType {
 
     /// 新しくVarType::Stringを作成します。
     /// * `data` - 文字列の内容
-    pub fn new_string(data: &String) -> Self {
+    pub fn new_string(data: &str) -> Self {
         VarType::String(data.trim_matches('"').to_string())
     }
 }
@@ -61,5 +61,14 @@ impl VarType {
 impl Display for VarType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self)
+    }
+}
+
+impl PartialOrd for VarType {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match (self, other) {
+            (VarType::Integer(a), VarType::Integer(b)) => Some(a.cmp(b)),
+            _ => None
+        }
     }
 }

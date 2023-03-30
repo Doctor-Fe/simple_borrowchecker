@@ -9,14 +9,13 @@ use std::{collections::VecDeque, error::Error};
 
 use log::{debug, info, trace};
 
-use errors::{BracketError, InvalidExpressionError, NoInputError, OperationError, VariableNotFoundError, ReferenceError};
+use errors::{BracketError, InvalidExpressionError, OperationError, VariableNotFoundError};
 use ElementType::Immediate;
 use ElementType::Monomial;
 use ElementType::Variable;
 
 use variables::VarType;
 use crate::ret_err;
-use crate::vec_deque;
 
 /// 式を解釈するパーサです。現時点ではインタプリタとしてのみ動作します。
 #[derive(Debug)]
@@ -48,24 +47,28 @@ impl ExprParser {
         info!("Start parsing...");
         self.split_elements(cmd); // 要素単位に分解
         debug!("Splitted elements: {:?}", self.cmds);
-        match self.cmds.iter().filter(|a| **a == "(").count().cmp(&self.cmds.iter().filter(|a| **a == ")").count()) {
+        let mut bracket1: i32 = 0;
+        let mut bracket2: i32 = 0;
+        for a in &self.cmds {
+            match a.as_str() {
+                "(" => bracket1 += 1,
+                ")" => bracket1 -= 1,
+                "{" => bracket2 += 1,
+                "}" => bracket2 -= 1,
+                _ => {}
+            }
+        }
+        match bracket1.cmp(&0) {
             std::cmp::Ordering::Less => ret_err!(BracketError::new("(")),
-            std::cmp::Ordering::Equal => {
-                let mut p = 0;
-                loop {
-                    match self.parse_sentence(&mut p) {
-                        Ok(a) => {
-                            if p >= self.cmds.len() {
-                                info!("Successfully parsed (Result: {})", a);
-                                return Ok(a);
-                            }
-                        },
-                        Err(b) => return Err(b),
-                    }
-                    p += 1;
-                }
-            },
             std::cmp::Ordering::Greater => ret_err!(BracketError::new(")")),
+            std::cmp::Ordering::Equal => match bracket2.cmp(&0) {
+                std::cmp::Ordering::Less => ret_err!(BracketError::new("{")),
+                std::cmp::Ordering::Greater => ret_err!(BracketError::new("}")),
+                std::cmp::Ordering::Equal => {
+                    let mut p = 0;
+                    return self.parse_sentence(&mut p);
+                },
+            },
         }; // かっこが一致することを確認
     }
 
@@ -77,7 +80,7 @@ impl ExprParser {
         while *pointer < self.cmds.len() {
             trace!("Pointer: {} ({})", pointer, self.cmds[*pointer]);
             match self.cmds.get(*pointer).map(|a| a.as_str()) {
-                Some("}") | Some(";") => break,
+                Some("}" | ";") => break,
                 Some("let") => {
                         if let Some(a) = self.cmds.get(*pointer + 1) {
                             if a.parse::<i32>().is_err() {
@@ -89,6 +92,11 @@ impl ExprParser {
                             ret_err!(InvalidExpressionError::from("Next of \"let\" keyword must be variable name."))
                         }
                     },
+                Some("debug") => {
+                    *pointer += 1;
+                    last = self.parse_expression(pointer)?;
+                    println!("{:?}", last);
+                }
                 Some("{") => {
                     *pointer += 1;
                     last = self.parse_sentence(pointer)?;
@@ -103,6 +111,9 @@ impl ExprParser {
                 _ => *pointer += 1,
             }
         }
+        if *pointer >= self.cmds.len() {
+            *pointer = self.cmds.len() - 1;
+        }
         if self.cmds.get(*pointer) == Some(&String::from(";")) {
             last = VarType::Void;
         }
@@ -114,74 +125,66 @@ impl ExprParser {
     fn parse_expression(&mut self, pointer: &mut usize) -> Result<VarType, Box<dyn Error>> {
         info!("Start parsing as expression from {}.", pointer);
         let mut list: Vec<(String, VecDeque<ElementType>)> = Vec::new();
-        let mut monomial_flag: Option<String> = None;
+        let mut monomial_flag: Vec<String> = vec![];
         while *pointer < self.cmds.len() {
             trace!("Pointer: {} ({})", pointer, self.cmds[*pointer]);
-            let n: ElementType = match self.cmds.get(*pointer) {
-                Some(a) => match a.as_str() {
-                    ";" | ")" | "}" => {
-                        break;
+            let n: ElementType = match self.cmds.get(*pointer).map(|a| a.as_str()) {
+                Some(";" | ")" | "}") => break,
+                Some("(") => {
+                    *pointer += 1;
+                    Immediate(self.parse_expression(pointer)?)
+                },
+                Some("{") => {
+                    *pointer += 1;
+                    Immediate(self.parse_sentence(pointer)?)
+                }
+                Some(a) => match a.parse::<i32>() {
+                    Ok(b) => {
+                        Immediate(VarType::Integer(b))
                     },
-                    "(" => {
-                        *pointer += 1;
-                        Immediate(self.parse_expression(pointer)?)
-                    },
-                    "{" => {
-                        *pointer += 1;
-                        let tmp = Immediate(self.parse_sentence(pointer)?);
-                        tmp
-                    }
-                    _ => match a.parse::<i32>() {
-                        Ok(b) => {
-                            if monomial_flag.is_some() {
-                                Monomial(monomial_flag.clone().unwrap(), Rc::new(Immediate(VarType::Integer(b))))
-                            } else {
-                                Immediate(VarType::Integer(b))
-                            }
+                    Err(_) => match self.get_variable(&a.to_string()) {
+                        Some(_) => {
+                            Variable(String::from(a))
                         },
-                        Err(_) => match self.get_variable(&a.to_string()) {
-                            Some(_) => {
-                                if monomial_flag.is_some() {
-                                    Monomial(monomial_flag.clone().unwrap(), Rc::new(Variable(a.clone())))
-                                } else {
-                                    Variable(a.clone())
-                                }
-                            },
-                            None => if Self::is_monomial(&a) {
-                                monomial_flag = Some(a.to_string());
-                                *pointer += 1;
-                                continue;
-                            } else {
-                                match Self::get_priority(&a) {
-                                    Some(_) => ret_err!(InvalidExpressionError::new(format!("Illegal operator \"{}\".", a))),
-                                    None => {
-                                        let mut t = a.chars();
-                                        if t.next() == Some('"') && t.last() == Some('"') {
-                                            if monomial_flag.is_some() {
-                                                Monomial(monomial_flag.clone().unwrap(), Rc::new(Immediate(VarType::new_string(&a))))
-                                            } else {
-                                                Immediate(VarType::new_string(&a))
-                                            }
-                                        } else {
-                                            ret_err!(VariableNotFoundError::new(a.clone()))
-                                        }
-                                    },
-                                }
+                        None => if Self::is_monomial(&a) {
+                            monomial_flag.push(a.to_string());
+                            *pointer += 1;
+                            continue;
+                        } else {
+                            match Self::get_priority(&a) {
+                                Some(_) => ret_err!(InvalidExpressionError::new(format!("Illegal operator \"{}\".", a))),
+                                None => {
+                                    let mut t = a.chars();
+                                    if t.next() == Some('"') && t.last() == Some('"') {
+                                        Immediate(VarType::new_string(a))
+                                    } else {
+                                        ret_err!(VariableNotFoundError::new(String::from(a)))
+                                    }
+                                },
                             }
-                        },
+                        }
                     },
                 },
                 None => unreachable!(),
             };
+            let n = {
+                let mut tmp = n;
+                loop {
+                    tmp = match monomial_flag.pop() {
+                        Some(a) => Monomial(a, Rc::new(tmp)),
+                        None => break tmp,
+                    };
+                }
+            };
             *pointer += 1;
             if let Some(mut a) = list.pop() {
-                match self.cmds.get(*pointer) {
+                match self.cmds.get(*pointer).map(|a| a.as_str()) {
+                    Some(";" | ")" | "}") => {
+                        a.1.push_back(n);
+                        list.push(a);
+                        break;
+                    }
                     Some(upcoming) => {
-                        if upcoming == ";" || upcoming == ")" || upcoming == "}" {
-                            a.1.push_back(n);
-                            list.push(a);
-                            break;
-                        }
                         if upcoming != &a.0 && Self::get_priority(upcoming) >= Self::get_priority(&a.0) {
                             a.1.push_back(n);
                             trace!("{:?}", a);
@@ -189,11 +192,11 @@ impl ExprParser {
                             if tmp.is_empty() {
                                 ret_err!(OperationError)
                             } else {
-                                list.push((self.cmds.get(*pointer).unwrap().clone(), vec_deque![Immediate(tmp)]));
+                                list.push((self.cmds.get(*pointer).unwrap().clone(), VecDeque::from([Immediate(tmp)])));
                             }
                         } else {
                             list.push(a);
-                            list.push((self.cmds.get(*pointer).unwrap().clone(), vec_deque!(n)));
+                            list.push((self.cmds.get(*pointer).unwrap().clone(), VecDeque::from([n])));
                         }
                     }
                     None => {
@@ -203,12 +206,12 @@ impl ExprParser {
                 }
             } else {
                 trace!("Upcoming: {:?}", self.cmds.get(*pointer));
-                match self.cmds.get(*pointer) {
+                match self.cmds.get(*pointer).map(|a| a.as_str()) {
+                    Some(";" | ")" | "}") => {
+                        return n.to_vartype(self);
+                    }
                     Some(upcoming) => {
-                        if upcoming == ";" || upcoming == ")" || upcoming == "}" {
-                            return n.to_vartype(self);
-                        }
-                        list.push((upcoming.clone(), vec_deque!(n)));
+                        list.push((String::from(upcoming), VecDeque::from([n])));
                     },
                     None => return n.to_vartype(self),
                 }
@@ -239,23 +242,10 @@ impl ExprParser {
                 }
             },
             None => {
-                ret_err!(NoInputError);
+                return Ok(VarType::Void);
             },
         }
     }
-}
-
-
-/// 1つの要素が入った `VecDeque` を生成するマクロです。
-#[macro_export]
-macro_rules! vec_deque {
-    ($($x: expr),*) => {
-        {
-            let mut tmp = VecDeque::new();
-            $(tmp.push_back($x);)*
-            tmp
-        }
-    };
 }
 
 /// 式の要素の種類を定義します。
@@ -270,82 +260,53 @@ pub enum ElementType {
 }
 
 impl ElementType {
-    fn get(&self) -> &Self {self}
     /// 数値へ変換します。
     /// * `expr` - 関数を呼び出した `ExprParser`
     fn to_vartype(&self, expr: &ExprParser) -> Result<VarType, Box<dyn Error>> {
         match self {
-            ElementType::Variable(s) => match expr.get_variable(s) {
-                Some(a) => Ok(a.clone()),
-                None => Ok(VarType::Void),
-            },
+            ElementType::Variable(s) => Ok(expr.get_variable(s).map(|a| a.clone()).unwrap_or(VarType::Void)),
             ElementType::Immediate(i) => Ok(i.clone()),
             ElementType::Monomial(s, e) => {
-                if s == "&" {
-                    match e.get() {
-                        Variable(v) => Ok(VarType::Pointer(v.clone())),
-                        _ => ret_err!(ReferenceError::invalid_dereference())
-                    }
-                } else {
-                    match e.to_vartype(expr)? {
-                        VarType::Uninitialized | VarType::Void => ret_err!(OperationError),
-                        VarType::Integer(i) => {
-                            match s.as_str() {
-                                    "+" => Ok(VarType::Integer(i)),
-                                    "-" => Ok(VarType::Integer(-i)),
-                                    "~" => Ok(VarType::Integer(!i)),
-                                    "!" => Ok(VarType::Integer(if i == 0 {1} else {0})),
-                                    _ => unreachable!()
-                            }
-                        },
-                        VarType::String(_) => todo!(),
-                        VarType::Pointer(p) => {
-                            if s == "*" {
-                                match expr.get_variable(&p) {
-                                    Some(i) => Ok(i.clone()),
-                                    None => Ok(VarType::Void),
-                                }
-                            } else {
-                                unreachable!()
-                            }
-                        },
-                    }
+                match (e.to_vartype(expr)?, s.as_str()) {
+                    (VarType::Uninitialized | VarType::Void, _) => ret_err!(OperationError),
+                    (a, "&") => Ok(VarType::Pointer(Rc::new(a))),
+                    (a, "&&") => Ok(VarType::Pointer(Rc::new(VarType::Pointer(Rc::new(a))))),
+                    (VarType::Integer(i), "+") => Ok(VarType::Integer(i)),
+                    (VarType::Integer(i), "-") => Ok(VarType::Integer(-i)),
+                    (VarType::Integer(i), "~") => Ok(VarType::Integer(!i)),
+                    (VarType::Integer(i), "!") => Ok(VarType::Integer(if i == 0 {1} else {0})),
+                    (VarType::Integer(_), a) => ret_err!(InvalidExpressionError::new(format!("Monomial \"{}\" is not for integer.", a))),
+                    (VarType::String(_), _) => ret_err!(InvalidExpressionError::from("There are no monomial for string.")),
+                    (VarType::Pointer(p), "*") => Ok((*p).clone()),
+                    (VarType::Pointer(_), _) => ret_err!(InvalidExpressionError::new(format!("Monomial \"{}\" is not for pointer.", s))),
                 }
             }
         }
     }
 
-    /// 数値を返す演算を実行します。
+    /// 二項演算子の演算を行います。
     /// - `expr` - 処理を呼び出すパーサのインスタンス
     /// - `right` - 右辺に来る `ElementType` 構造体
     /// - `op` - 具体的な処理内容を記述するクロージャ
-    fn op_num<F>(self, expr: &ExprParser, other: ElementType, op: F) -> Result<VarType, Box<dyn Error>>
+    fn operation<F>(self, expr: &mut ExprParser, right: ElementType, op: F) -> Result<VarType, Box<dyn Error>>
     where
-        F: Fn(i32, i32) -> i32,
+        F: Fn(VarType, VarType) -> Result<VarType, Box<dyn Error>>,
     {
-        if let VarType::Integer(left) = self.to_vartype(expr)? {
-            if let VarType::Integer(right) = other.to_vartype(expr)? {
-                return Ok(VarType::Integer(op(left, right)));
-            }
-        }
-        ret_err!(InvalidExpressionError::from("Cannot operate with void"))
+        return op(self.to_vartype(expr)?, right.to_vartype(expr)?);
     }
 
-    /// 代入処理を実行します。
+    /// 二項演算子の演算を行います。
     /// - `expr` - 処理を呼び出すパーサのインスタンス
     /// - `right` - 右辺に来る `ElementType` 構造体
     /// - `op` - 具体的な処理内容を記述するクロージャ
-    fn op_let<F>(self, expr: &mut ExprParser, right: ElementType, op: F) -> Result<VarType, Box<dyn Error>>
+    fn operation_mut<F>(self, expr: &mut ExprParser, right: ElementType, op: F) -> Result<VarType, Box<dyn Error>>
     where
-        F: Fn(&mut VarType, VarType),
+        F: Fn(&mut VarType, VarType) -> Result<VarType, Box<dyn Error>>,
     {
         if let Variable(v) = self {
             let c = right.to_vartype(expr);
             match expr.get_variable_mut(&v) {
-                Some(a) => {
-                    op(a, c?);
-                    return Ok(VarType::Void);
-                },
+                Some(a) => return op(a, c?),
                 None => ret_err!(VariableNotFoundError::new(v.clone())),
             }
         }

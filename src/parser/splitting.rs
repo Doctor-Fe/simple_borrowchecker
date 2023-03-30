@@ -35,7 +35,7 @@ impl ExprParser {
             }
             
             if is_string {
-                if a == '"' && if let Some(a) = word.last() {a != &'\\'} else {true} {
+                if a == '"' && word.last().map(|a| a != &'\\').unwrap_or(true) {
                     is_string = !is_string;
                 }
                 word.push(a);
