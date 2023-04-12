@@ -34,15 +34,6 @@ impl ExprParser {
         if data.0 != "=" {
             let mut num = data.1.pop_front().unwrap();
             while !data.1.is_empty() {
-                let d = data.1.pop_front().unwrap();
-                num = ElementType::Immediate(self.calculate_binomial(&data.0, num, d)?);
-            }
-            return num.to_vartype(self);
-        } else {
-            let mut num = data.1.pop_back().unwrap();
-            while !data.1.is_empty() {
-                let d = data.1.pop_back().unwrap();
-                num = ElementType::Immediate(self.calculate_binomial(&data.0, d, num)?);
                 if data.0 == "&&" {
                     if matches!(num,  ElementType::Immediate(Integer(0))) {
                         break;
@@ -52,6 +43,15 @@ impl ExprParser {
                         break;
                     }
                 }
+                let d = data.1.pop_front().unwrap();
+                num = ElementType::Immediate(self.calculate_binomial(&data.0, num, d)?);
+            }
+            return num.to_vartype(self);
+        } else {
+            let mut num = data.1.pop_back().unwrap();
+            while !data.1.is_empty() {
+                let d = data.1.pop_back().unwrap();
+                num = ElementType::Immediate(self.calculate_binomial(&data.0, d, num)?);
             }
             return num.to_vartype(self);
         }

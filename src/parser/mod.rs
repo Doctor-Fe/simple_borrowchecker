@@ -97,10 +97,6 @@ impl ExprParser {
                     last = self.parse_expression(pointer)?;
                     println!("{:?}", last);
                 }
-                Some("{") => {
-                    *pointer += 1;
-                    last = self.parse_sentence(pointer)?;
-                },
                 Some(_) => {
                     last = self.parse_expression(pointer)?;
                 },
@@ -264,7 +260,7 @@ impl ElementType {
     /// * `expr` - 関数を呼び出した `ExprParser`
     fn to_vartype(&self, expr: &ExprParser) -> Result<VarType, Box<dyn Error>> {
         match self {
-            ElementType::Variable(s) => Ok(expr.get_variable(s).map(|a| a.clone()).unwrap_or(VarType::Void)),
+            ElementType::Variable(s) => Ok(expr.get_variable(s).map(|a| a.clone()).unwrap()),
             ElementType::Immediate(i) => Ok(i.clone()),
             ElementType::Monomial(s, e) => {
                 match (e.to_vartype(expr)?, s.as_str()) {
