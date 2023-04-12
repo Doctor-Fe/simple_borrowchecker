@@ -33,7 +33,7 @@ impl ExprParser {
     pub fn try_calculate_all(&mut self, mut data: (String, VecDeque<ElementType>)) -> Result<VarType, Box<dyn Error>> {
         if data.0 != "=" {
             let mut num = data.1.pop_front().unwrap();
-            while !data.1.is_empty() {
+            while let Some(d) = data.1.pop_front() {
                 if data.0 == "&&" {
                     if matches!(num,  ElementType::Immediate(Integer(0))) {
                         break;
@@ -43,14 +43,12 @@ impl ExprParser {
                         break;
                     }
                 }
-                let d = data.1.pop_front().unwrap();
                 num = ElementType::Immediate(self.calculate_binomial(&data.0, num, d)?);
             }
             return num.to_vartype(self);
         } else {
             let mut num = data.1.pop_back().unwrap();
-            while !data.1.is_empty() {
-                let d = data.1.pop_back().unwrap();
+            while let Some(d) = data.1.pop_back() {
                 num = ElementType::Immediate(self.calculate_binomial(&data.0, d, num)?);
             }
             return num.to_vartype(self);

@@ -7,14 +7,20 @@ use super::ExprParser;
 impl ExprParser {
     /// 可変な状態で変数を取得します。
     /// - `name` - 変数名
-    pub fn get_variable_mut(&mut self, name: &String) -> Option<&mut VarType> {
+    pub fn get_variable_mut(&mut self, name: &str) -> Option<&mut VarType> {
         self.variables.get_mut(name)
     }
     
     /// 変数を取得します。
     /// - `name` - 変数名
-    pub fn get_variable(&self, name: &String) -> Option<&VarType> {
+    pub fn get_variable(&self, name: &str) -> Option<&VarType> {
         self.variables.get(name)
+    }
+
+    /// 変数が存在するかを確認します。
+    /// - `name` - 変数名
+    pub fn has_variable(&self, name: &str) -> bool {
+        self.variables.contains_key(name)
     }
 
     /// 変数を作成します。
@@ -45,10 +51,7 @@ pub enum VarType {
 impl VarType {
     /// 値が空であるかを取得する関数です。
     pub fn is_empty(&self) -> bool {
-        match self {
-            VarType::Uninitialized | VarType::Void => true,
-            _ => false
-        }
+        matches!(self, VarType::Uninitialized | VarType::Void)
     }
 
     /// 新しくVarType::Stringを作成します。

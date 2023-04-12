@@ -138,26 +138,23 @@ impl ExprParser {
                     Ok(b) => {
                         Immediate(VarType::Integer(b))
                     },
-                    Err(_) => match self.get_variable(&a.to_string()) {
-                        Some(_) => {
-                            Variable(String::from(a))
-                        },
-                        None => if Self::is_monomial(&a) {
-                            monomial_flag.push(a.to_string());
-                            *pointer += 1;
-                            continue;
-                        } else {
-                            match Self::get_priority(&a) {
-                                Some(_) => ret_err!(InvalidExpressionError::new(format!("Illegal operator \"{}\".", a))),
-                                None => {
-                                    let mut t = a.chars();
-                                    if t.next() == Some('"') && t.last() == Some('"') {
-                                        Immediate(VarType::new_string(a))
-                                    } else {
-                                        ret_err!(VariableNotFoundError::new(String::from(a)))
-                                    }
-                                },
-                            }
+                    Err(_) => if self.has_variable(a) {
+                        Variable(String::from(a))
+                    } else if Self::is_monomial(&a) {
+                        monomial_flag.push(a.to_string());
+                        *pointer += 1;
+                        continue;
+                    } else {
+                        match Self::get_priority(&a) {
+                            Some(_) => ret_err!(InvalidExpressionError::new(format!("Illegal operator \"{}\".", a))),
+                            None => {
+                                let mut t = a.chars();
+                                if t.next() == Some('"') && t.last() == Some('"') {
+                                    Immediate(VarType::new_string(a))
+                                } else {
+                                    ret_err!(VariableNotFoundError::new(String::from(a)))
+                                }
+                            },
                         }
                     },
                 },
@@ -165,12 +162,10 @@ impl ExprParser {
             };
             let n = {
                 let mut tmp = n;
-                loop {
-                    tmp = match monomial_flag.pop() {
-                        Some(a) => Monomial(a, Rc::new(tmp)),
-                        None => break tmp,
-                    };
+                while let Some(a) = monomial_flag.pop() {
+                    tmp =  Monomial(a, Rc::new(tmp));
                 }
+                tmp
             };
             *pointer += 1;
             if let Some(mut a) = list.pop() {
@@ -188,11 +183,11 @@ impl ExprParser {
                             if tmp.is_empty() {
                                 ret_err!(OperationError)
                             } else {
-                                list.push((self.cmds.get(*pointer).unwrap().clone(), VecDeque::from([Immediate(tmp)])));
+                                list.push((self.cmds[*pointer].clone(), VecDeque::from([Immediate(tmp)])));
                             }
                         } else {
                             list.push(a);
-                            list.push((self.cmds.get(*pointer).unwrap().clone(), VecDeque::from([n])));
+                            list.push((self.cmds[*pointer].clone(), VecDeque::from([n])));
                         }
                     }
                     None => {
@@ -216,26 +211,16 @@ impl ExprParser {
         }
         match list.pop() {
             Some(b) => {
-                trace!("{:?}", b);
-                let mut num = self.try_calculate_all(b);
-                loop {
-                    if list.is_empty() {
-                        return num;
-                    }
-                    match num {
-                        Ok(a) => {
-                            if a.is_empty() {
-                                ret_err!(OperationError)
-                            } else {
-                                let mut c = list.pop().unwrap();
-                                c.1.push_back(Immediate(a));
-                                trace!("{:?}", c);
-                                num = self.try_calculate_all(c);
-                            }
-                        },
-                        Err(e) => return Err(e),
+                let mut num = self.try_calculate_all(b)?;
+                while let Some(mut c) = list.pop() {
+                    if num.is_empty() {
+                        ret_err!(OperationError)
+                    } else {
+                        c.1.push_back(Immediate(num));
+                        num = self.try_calculate_all(c)?;
                     }
                 }
+                return Ok(num);
             },
             None => {
                 return Ok(VarType::Void);
