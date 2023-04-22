@@ -3,7 +3,7 @@ mod op;
 mod splitting;
 mod variables;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeMap};
 use std::rc::Rc;
 use std::{collections::VecDeque, error::Error};
 
@@ -21,7 +21,8 @@ use crate::ret_err;
 #[derive(Debug)]
 pub struct ExprParser {
     cmds: Vec<String>,
-    variables: HashMap<String, VarType>,
+    variables: HashMap<String, BTreeMap<usize, VarType>>,
+    depth: usize
 }
 
 impl ExprParser {
@@ -29,6 +30,7 @@ impl ExprParser {
         ExprParser {
             cmds: Vec::new(),
             variables: HashMap::new(),
+            depth: 0,
         }
     }
 
@@ -75,6 +77,7 @@ impl ExprParser {
     /// 分割された要素を解釈する関数です。
     /// * `pointer` - 次に解釈する単語を指すポインタ
     fn parse_sentence(&mut self, pointer: &mut usize) -> Result<VarType, Box<dyn Error>> {
+        self.depth += 1;
         info!("Start parsing as sentence from {}.", pointer);
         let mut last = VarType::Void;
         while *pointer < self.cmds.len() {
@@ -113,6 +116,16 @@ impl ExprParser {
         if self.cmds.get(*pointer) == Some(&String::from(";")) {
             last = VarType::Void;
         }
+        for a in &mut self.variables {
+            while let Some(b) = a.1.last_key_value() {
+                if *b.0 >= self.depth {
+                    a.1.pop_last();
+                } else {
+                    break;
+                }
+            }
+        }
+        self.depth -= 1;
         return Ok(last);
     }
 
@@ -245,7 +258,12 @@ impl ElementType {
     /// * `expr` - 関数を呼び出した `ExprParser`
     fn to_vartype(&self, expr: &ExprParser) -> Result<VarType, Box<dyn Error>> {
         match self {
-            ElementType::Variable(s) => Ok(expr.get_variable(s).map(|a| a.clone()).unwrap()),
+            ElementType::Variable(s) => {
+                match expr.get_variable(s).clone() {
+                    VarType::Uninitialized => ret_err!(VariableNotFoundError::new(s.clone())),
+                    a => return Ok(a),
+                }
+            },
             ElementType::Immediate(i) => Ok(i.clone()),
             ElementType::Monomial(s, e) => {
                 match (e.to_vartype(expr)?, s.as_str()) {
