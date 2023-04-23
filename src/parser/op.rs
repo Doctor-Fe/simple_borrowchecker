@@ -31,28 +31,19 @@ impl ExprParser {
     }
 
     pub fn try_calculate_all(&mut self, mut data: (String, VecDeque<ElementType>)) -> Result<VarType, Box<dyn Error>> {
-        if data.0 != "=" {
-            let mut num = data.1.pop_front().unwrap();
-            while let Some(d) = data.1.pop_front() {
-                if data.0 == "&&" {
-                    if matches!(num,  ElementType::Immediate(Integer(0))) {
-                        break;
-                    }
-                } else if data.0 == "||" {
-                    if !matches!(num,  ElementType::Immediate(Integer(0))) {
-                        break;
-                    }
-                }
-                num = ElementType::Immediate(self.calculate_binomial(&data.0, num, d)?);
+        let f = if data.0 != "=" {VecDeque::<ElementType>::pop_front} else {VecDeque::<ElementType>::pop_back};
+        let mut num = f(&mut data.1).unwrap().to_vartype(&self)?;
+        while let Some(d) = f(&mut data.1) {
+            if (data.0 == "&&" && matches!(num, Integer(0))) || (data.0 == "||" && !matches!(num, Integer(0))) {
+                break;
             }
-            return num.to_vartype(self);
-        } else {
-            let mut num = data.1.pop_back().unwrap();
-            while let Some(d) = data.1.pop_back() {
-                num = ElementType::Immediate(self.calculate_binomial(&data.0, d, num)?);
+            if data.0 != "=" {
+                num = self.calculate_binomial(&data.0, ElementType::Immediate(num), d)?;
+            } else {
+                num = self.calculate_binomial(&data.0, d, ElementType::Immediate(num))?;
             }
-            return num.to_vartype(self);
         }
+        return Ok(num);
     }
 
     fn calculate_binomial(&mut self, op: &str, left: ElementType, right: ElementType) -> Result<VarType, Box<dyn Error>> {
@@ -128,8 +119,8 @@ impl ExprParser {
                     _ => ret_err!(InvalidExpressionError::from("Invalid operation.")),
                 }
             }),
-            "==" => left.operation(self, right, |a, b| Ok(Integer(if a == b {1} else {0}))),
-            "!=" => left.operation(self, right, |a, b| Ok(Integer(if a != b {1} else {0}))),
+            "==" => left.operation(self, right, |a, b| Ok(Integer((a == b) as i32))),
+            "!=" => left.operation(self, right, |a, b| Ok(Integer((a != b) as i32))),
             ">" => left.operation(self, right, |a, b| {
                 match a.partial_cmp(&b) {
                     Some(a) => Ok(Integer(if a == Ordering::Greater {1} else {0})),

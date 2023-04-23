@@ -8,8 +8,7 @@ impl ExprParser {
         let mut word: Vec<char> = Vec::new();
         let mut is_string = false;
         let mut comment_out: Option<CommentType> = None;
-        while !tmp.is_empty() {
-            let a = tmp.pop().unwrap();
+        while let Some(a) = tmp.pop() {
             if let Some(c) = comment_out {
                 if c == CommentType::SingleLine && a == '\n' {
                     comment_out = None;
@@ -42,7 +41,7 @@ impl ExprParser {
             } else {
                 match CharType::get_chartype(a) {
                     CharType::Normal => {
-                        if !word.is_empty() && CharType::get_chartype(*word.last().unwrap()) != CharType::Normal {
+                        if word.last().map(|a| CharType::get_chartype(*a) != CharType::Normal).unwrap_or(false) {
                             self.cmds.push(String::from_iter(&word));
                             word.clear();
                         }
@@ -51,11 +50,9 @@ impl ExprParser {
                     CharType::Punctuation => {
                         if a == '"' {
                             is_string = !is_string;
-                        } else {
-                            if !word.is_empty() && (Self::get_priority(String::from_iter([word.clone(), vec![a]].concat()).as_str()).is_none()) {
-                                self.cmds.push(String::from_iter(&word));
-                                word.clear();
-                            }
+                        } else if !word.is_empty() && (Self::get_priority(String::from_iter([word.clone(), vec![a]].concat()).as_str()).is_none()) {
+                            self.cmds.push(String::from_iter(&word));
+                            word.clear();
                         }
                         word.push(a);
                     },

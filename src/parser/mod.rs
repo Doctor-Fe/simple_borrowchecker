@@ -147,36 +147,62 @@ impl ExprParser {
                     *pointer += 1;
                     Immediate(self.parse_sentence(pointer)?)
                 }
-                Some(a) => match a.parse::<i32>() {
-                    Ok(b) => {
-                        Immediate(VarType::Integer(b))
-                    },
-                    Err(_) => if self.has_variable(a) {
+                Some(a) => if matches!(a.as_bytes().get(0), Some(b'0'..=b'9')) {
+                        let mut t = a.bytes();
+                        let mut num = 0;
+                        let base = match t.next().unwrap() {
+                            b'0' => match t.next() {
+                                Some(b'x') => 16,
+                                Some(b'b') => 2,
+                                Some(b'0'..=b'9') | None => 10,
+                                Some(_) => ret_err!(InvalidExpressionError::from("Invalid integer."))
+                            },
+                            a if b'1' <= a && a <= b'9' => {
+                                num = (a - b'0') as i32;
+                                10
+                            }
+                            _ => ret_err!(InvalidExpressionError::from("Invalid integer."))
+                        };
+                        for i in t {
+                            num *= base;
+                            let t = match i {
+                                b'0'..=b'9' => i - b'0',
+                                b'a'..=b'f' => i - b'a' + 10,
+                                b'A'..=b'F' => i - b'A' + 10,
+                                b'_' => continue,
+                                _ => ret_err!(InvalidExpressionError::from("Invalid integer."))
+                            } as i32;
+                            if t < base {
+                                num += t;
+                            } else {
+                                ret_err!(InvalidExpressionError::from("Invalid integer."))
+                            }
+                        }
+                        Immediate(VarType::Integer(num))
+                    } else if self.has_variable(a) {
                         Variable(String::from(a))
                     } else if Self::is_monomial(&a) {
                         monomial_flag.push(a.to_string());
                         *pointer += 1;
                         continue;
                     } else {
-                        match Self::get_priority(&a) {
-                            Some(_) => ret_err!(InvalidExpressionError::new(format!("Illegal operator \"{}\".", a))),
-                            None => {
-                                let mut t = a.chars();
-                                if t.next() == Some('"') && t.last() == Some('"') {
-                                    Immediate(VarType::new_string(a))
-                                } else {
-                                    ret_err!(VariableNotFoundError::new(String::from(a)))
-                                }
-                            },
+                        if Self::get_priority(&a).is_some() {
+                            ret_err!(InvalidExpressionError::new(format!("Illegal operator \"{}\".", a)));
+                        } else {
+                            let mut t = a.chars();
+                            if t.next() == Some('"') && t.last() == Some('"') {
+                                Immediate(VarType::new_string(a))
+                            } else {
+                                ret_err!(VariableNotFoundError::new(String::from(a)));
+                            }
                         }
-                    },
                 },
                 None => unreachable!(),
             };
             let n = {
                 let mut tmp = n;
                 while let Some(a) = monomial_flag.pop() {
-                    tmp =  Monomial(a, Rc::new(tmp));
+                    tmp = Monomial(a, Rc::new(tmp));
                 }
                 tmp
             };
@@ -192,11 +218,9 @@ impl ExprParser {
                         if upcoming != &a.0 && Self::get_priority(upcoming) >= Self::get_priority(&a.0) {
                             a.1.push_back(n);
                             trace!("{:?}", a);
-                            let tmp = self.try_calculate_all(a)?;
-                            if tmp.is_empty() {
-                                ret_err!(OperationError)
-                            } else {
-                                list.push((self.cmds[*pointer].clone(), VecDeque::from([Immediate(tmp)])));
+                            match self.try_calculate_all(a)? {
+                                VarType::Uninitialized | VarType::Void => ret_err!(OperationError),
+                                tmp => list.push((self.cmds[*pointer].clone(), VecDeque::from([Immediate(tmp)]))),
                             }
                         } else {
                             list.push(a);
@@ -274,10 +298,8 @@ impl ElementType {
                     (VarType::Integer(i), "-") => Ok(VarType::Integer(-i)),
                     (VarType::Integer(i), "~") => Ok(VarType::Integer(!i)),
                     (VarType::Integer(i), "!") => Ok(VarType::Integer(if i == 0 {1} else {0})),
-                    (VarType::Integer(_), a) => ret_err!(InvalidExpressionError::new(format!("Monomial \"{}\" is not for integer.", a))),
-                    (VarType::String(_), _) => ret_err!(InvalidExpressionError::from("There are no monomial for string.")),
                     (VarType::Pointer(p), "*") => Ok((*p).clone()),
-                    (VarType::Pointer(_), _) => ret_err!(InvalidExpressionError::new(format!("Monomial \"{}\" is not for pointer.", s))),
+                    (b, a) => ret_err!(InvalidExpressionError::new(format!("Monomial \"{}\" is not for {}.", a, b))),
                 }
             }
         }
@@ -303,9 +325,9 @@ impl ElementType {
         F: Fn(&mut VarType, VarType) -> Result<VarType, Box<dyn Error>>,
     {
         if let Variable(v) = self {
-            let c = right.to_vartype(expr);
+            let c = right.to_vartype(expr)?;
             match expr.get_variable_mut(&v) {
-                Some(a) => return op(a, c?),
+                Some(a) => return op(a, c),
                 None => ret_err!(VariableNotFoundError::new(v.clone())),
             }
         }
