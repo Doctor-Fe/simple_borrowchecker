@@ -48,19 +48,21 @@ impl ExprParser {
                         word.push(a);
                     },
                     CharType::Punctuation => {
+                        word.push(a);
                         if a == '"' {
                             is_string = !is_string;
-                        } else if !word.is_empty() && (Self::get_priority(String::from_iter([word.clone(), vec![a]].concat()).as_str()).is_none()) {
-                            self.cmds.push(String::from_iter(&word));
-                            word.clear();
+                        } else if !word.is_empty() {
+                            if Self::get_priority(&String::from_iter(&word)).is_none() {
+                                word.pop();
+                                self.cmds.push(String::from_iter(&word));
+                                word.clear();
+                                word.push(a);
+                            }
                         }
-                        word.push(a);
                     },
-                    CharType::WhiteSpace => {
-                        if !word.is_empty() {
-                            self.cmds.push(String::from_iter(&word));
-                            word.clear();
-                        }
+                    CharType::WhiteSpace => if !word.is_empty() {
+                        self.cmds.push(String::from_iter(&word));
+                        word.clear();
                     },
                 }
             }

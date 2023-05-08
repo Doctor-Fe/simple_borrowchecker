@@ -31,16 +31,16 @@ impl ExprParser {
     }
 
     pub fn try_calculate_all(&mut self, mut data: (String, VecDeque<ElementType>)) -> Result<VarType, Box<dyn Error>> {
-        let f = if data.0 != "=" {VecDeque::<ElementType>::pop_front} else {VecDeque::<ElementType>::pop_back};
+        let f = if data.0.ends_with('=') {VecDeque::<ElementType>::pop_back} else {VecDeque::<ElementType>::pop_front};
         let mut num = f(&mut data.1).unwrap().to_vartype(&self)?;
         while let Some(d) = f(&mut data.1) {
             if (data.0 == "&&" && matches!(num, Integer(0))) || (data.0 == "||" && !matches!(num, Integer(0))) {
                 break;
             }
-            if data.0 != "=" {
-                num = self.calculate_binomial(&data.0, ElementType::Immediate(num), d)?;
-            } else {
+            if data.0.ends_with('=') {
                 num = self.calculate_binomial(&data.0, d, ElementType::Immediate(num))?;
+            } else {
+                num = self.calculate_binomial(&data.0, ElementType::Immediate(num), d)?;
             }
         }
         return Ok(num);

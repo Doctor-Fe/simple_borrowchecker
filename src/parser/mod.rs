@@ -135,69 +135,54 @@ impl ExprParser {
         info!("Start parsing as expression from {}.", pointer);
         let mut list: Vec<(String, VecDeque<ElementType>)> = Vec::new();
         let mut monomial_flag: Vec<String> = vec![];
-        while *pointer < self.cmds.len() {
-            trace!("Pointer: {} ({})", pointer, self.cmds[*pointer]);
-            let n: ElementType = match self.cmds.get(*pointer).map(|a| a.as_str()) {
-                Some(";" | ")" | "}") => break,
-                Some("(") => {
-                    *pointer += 1;
-                    Immediate(self.parse_expression(pointer)?)
-                },
-                Some("{") => {
-                    *pointer += 1;
-                    Immediate(self.parse_sentence(pointer)?)
-                }
-                Some(a) => if matches!(a.as_bytes().get(0), Some(b'0'..=b'9')) {
-                        let mut t = a.bytes();
-                        let mut num = 0;
-                        let base = match t.next().unwrap() {
-                            b'0' => match t.next() {
-                                Some(b'x') => 16,
-                                Some(b'b') => 2,
-                                Some(b'0'..=b'9') | None => 10,
-                                Some(_) => ret_err!(InvalidExpressionError::from("Invalid integer."))
-                            },
-                            a if b'1' <= a && a <= b'9' => {
-                                num = (a - b'0') as i32;
-                                10
-                            }
+        while let Some(token) = self.cmds.get(*pointer) {
+            trace!("Pointer: {} ({})", pointer, token);
+            let n: ElementType = match token.as_str() {
+                ";" | ")" | "}" => break,
+                "(" => Immediate(self.parse_expression({*pointer += 1; pointer})?),
+                "{" => Immediate(self.parse_sentence({*pointer += 1; pointer})?),
+                a if matches!(a.as_bytes().get(0), Some(b'0'..=b'9')) => {
+                    let mut t = a.bytes();
+                    let mut num = 0;
+                    let base = match t.next().unwrap() {
+                        b'0' => match t.next() {
+                            Some(b'x') => 16,
+                            Some(b'b') => 2,
+                            Some(b'0'..=b'9') | None => 10,
+                            Some(_) => ret_err!(InvalidExpressionError::from("Invalid integer."))
+                        },
+                        a if b'1' <= a && a <= b'9' => {
+                            num = (a - b'0') as i32;
+                            10
+                        }
+                        _ => ret_err!(InvalidExpressionError::from("Invalid integer."))
+                    };
+                    for i in t {
+                        num *= base;
+                        let t = match i {
+                            b'0'..=b'9' => i - b'0',
+                            b'a'..=b'f' => i - b'a' + 10,
+                            b'A'..=b'F' => i - b'A' + 10,
+                            b'_' => continue,
                             _ => ret_err!(InvalidExpressionError::from("Invalid integer."))
-                        };
-                        for i in t {
-                            num *= base;
-                            let t = match i {
-                                b'0'..=b'9' => i - b'0',
-                                b'a'..=b'f' => i - b'a' + 10,
-                                b'A'..=b'F' => i - b'A' + 10,
-                                b'_' => continue,
-                                _ => ret_err!(InvalidExpressionError::from("Invalid integer."))
-                            } as i32;
-                            if t < base {
-                                num += t;
-                            } else {
-                                ret_err!(InvalidExpressionError::from("Invalid integer."))
-                            }
-                        }
-                        Immediate(VarType::Integer(num))
-                    } else if self.has_variable(a) {
-                        Variable(String::from(a))
-                    } else if Self::is_monomial(&a) {
-                        monomial_flag.push(a.to_string());
-                        *pointer += 1;
-                        continue;
-                    } else {
-                        if Self::get_priority(&a).is_some() {
-                            ret_err!(InvalidExpressionError::new(format!("Illegal operator \"{}\".", a)));
+                        } as i32;
+                        if t < base {
+                            num += t;
                         } else {
-                            let mut t = a.chars();
-                            if t.next() == Some('"') && t.last() == Some('"') {
-                                Immediate(VarType::new_string(a))
-                            } else {
-                                ret_err!(VariableNotFoundError::new(String::from(a)));
-                            }
+                            ret_err!(InvalidExpressionError::new(format!("Invalid integer. `{}` is not {}-based number.", a, base)))
                         }
+                    }
+                    Immediate(VarType::Integer(num))
                 },
-                None => unreachable!(),
+                variable if self.has_variable(variable) => Variable(String::from(variable)),
+                monomial if Self::is_monomial(&monomial) => {
+                    monomial_flag.push(monomial.to_string());
+                    *pointer += 1;
+                    continue;
+                },
+                binomial if Self::get_priority(&binomial).is_some() => ret_err!(InvalidExpressionError::new(format!("Illegal operator \"{}\".", binomial))),
+                string if string.starts_with('\"') && string.ends_with('\"') => Immediate(VarType::new_string(string)),
+                a => ret_err!(VariableNotFoundError::new(String::from(a))),
             };
             let n = {
                 let mut tmp = n;
@@ -309,7 +294,7 @@ impl ElementType {
     /// - `expr` - 処理を呼び出すパーサのインスタンス
     /// - `right` - 右辺に来る `ElementType` 構造体
     /// - `op` - 具体的な処理内容を記述するクロージャ
-    fn operation<F>(self, expr: &mut ExprParser, right: ElementType, op: F) -> Result<VarType, Box<dyn Error>>
+    fn operation<F>(self, expr: &ExprParser, right: ElementType, op: F) -> Result<VarType, Box<dyn Error>>
     where
         F: Fn(VarType, VarType) -> Result<VarType, Box<dyn Error>>,
     {
@@ -331,6 +316,8 @@ impl ElementType {
                 None => ret_err!(VariableNotFoundError::new(v.clone())),
             }
         }
+        info!("left-hand: {:?}", self);
+        info!("right-hand: {:?}", right);
         ret_err!(InvalidExpressionError::from("The left-hand must be variable."));
     }
 
