@@ -1,8 +1,8 @@
 use std::cmp::Ordering;
+use std::ops::{BitOr, BitAnd, BitXor, Shl, Shr};
 use std::{collections::VecDeque, error::Error};
 
-use crate::parser::errors::OperationError;
-use crate::{ret_err, parser::errors::InvalidExpressionError};
+use crate::{ret_err, parser::errors::{OperationError, OperationErrorType, InvalidExpressionError}};
 
 use super::{ExprParser, ElementType, VarType};
 use super::VarType::{Integer, Void, Uninitialized};
@@ -52,73 +52,19 @@ impl ExprParser {
                 match (a, b) {
                     (Integer(p), Integer(q)) => Ok(Integer(p + q)),
                     (VarType::String(p), VarType::String(q)) => Ok(VarType::String(format!("{}{}", p, q))),
-                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError),
+                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError::new(OperationErrorType::WithVoid)),
                     _ => ret_err!(InvalidExpressionError::from("Invalid operation.")),
                 }
             }),
-            "-" => left.operation(self, right, |a, b| {
-                match (a, b) {
-                    (Integer(p), Integer(q)) => Ok(Integer(p - q)),
-                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError),
-                    _ => ret_err!(InvalidExpressionError::from("Invalid operation.")),
-                }
-            }),
-            "*" => left.operation(self, right, |a, b| {
-                match (a, b) {
-                    (Integer(p), Integer(q)) => Ok(Integer(p * q)),
-                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError),
-                    _ => ret_err!(InvalidExpressionError::from("Invalid operation.")),
-                }
-            }),
-            "/" => left.operation(self, right, |a, b| {
-                match (a, b) {
-                    (Integer(a), Integer(b)) => Ok(Integer(a / b)),
-                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError),
-                    _ => ret_err!(InvalidExpressionError::from("Invalid operation.")),
-                }
-            }),
-            "%" => left.operation(self, right, |a, b| {
-                match (a, b) {
-                    (Integer(a), Integer(b)) => Ok(Integer(a % b)),
-                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError),
-                    _ => ret_err!(InvalidExpressionError::from("Invalid operation.")),
-                }
-            }),
-            "|" => left.operation(self, right, |a, b| {
-                match (a, b) {
-                    (Integer(a), Integer(b)) => Ok(Integer(a | b)),
-                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError),
-                    _ => ret_err!(InvalidExpressionError::from("Invalid operation.")),
-                }
-            }),
-            "&" => left.operation(self, right, |a, b| {
-                match (a, b) {
-                    (Integer(a), Integer(b)) => Ok(Integer(a & b)),
-                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError),
-                    _ => ret_err!(InvalidExpressionError::from("Invalid operation.")),
-                }
-            }),
-            "^" => left.operation(self, right, |a, b| {
-                match (a, b) {
-                    (Integer(a), Integer(b)) => Ok(Integer(a ^ b)),
-                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError),
-                    _ => ret_err!(InvalidExpressionError::from("Invalid operation.")),
-                }
-            }),
-            ">>" => left.operation(self, right, |a, b| {
-                match (a, b) {
-                    (Integer(a), Integer(b)) => Ok(Integer(a >> b)),
-                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError),
-                    _ => ret_err!(InvalidExpressionError::from("Invalid operation.")),
-                }
-            }),
-            "<<" => left.operation(self, right, |a, b| {
-                match (a, b) {
-                    (Integer(a), Integer(b)) => Ok(Integer(a << b)),
-                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError),
-                    _ => ret_err!(InvalidExpressionError::from("Invalid operation.")),
-                }
-            }),
+            "-" => left.operation_number_failable(self, right, i32::checked_sub),
+            "*" => left.operation_number_failable(self, right, i32::checked_mul),
+            "/" => left.operation_number_failable(self, right, i32::checked_div),
+            "%" => left.operation_number_failable(self, right, i32::checked_rem),
+            "|" => left.operation_number(self, right, i32::bitor),
+            "&" => left.operation_number(self, right, i32::bitand),
+            "^" => left.operation_number(self, right, i32::bitxor),
+            ">>" => left.operation_number(self, right, i32::shr),
+            "<<" => left.operation_number(self, right, i32::shl),
             "==" => left.operation(self, right, |a, b| Ok(Integer((a == b) as i32))),
             "!=" => left.operation(self, right, |a, b| Ok(Integer((a != b) as i32))),
             ">" => left.operation(self, right, |a, b| {
@@ -148,90 +94,118 @@ impl ExprParser {
             "&&" => left.operation(self, right, |a, b| {
                 match (a, b) {
                     (Integer(a), Integer(b)) => Ok(Integer(if a != 0 && b != 0 {1} else {0})),
-                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError),
+                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError::new(OperationErrorType::WithVoid)),
                     _ => ret_err!(InvalidExpressionError::from("Invalid operation.")),
                 }
             }),
             "||" => left.operation(self, right, |a, b| {
                 match (a, b) {
                     (Integer(a), Integer(b)) => Ok(Integer(if a != 0 || b != 0 {1} else {0})),
-                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError),
+                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError::new(OperationErrorType::WithVoid)),
                     _ => ret_err!(InvalidExpressionError::from("Invalid operation.")),
                 }
             }),
-            "=" => left.operation_mut(self, right, |a, b| {*a = b; Ok(Void)}),
+            "=" => left.operation_mut(self, right, |a, b| {Ok(*a = b)}),
             "+=" => left.operation_mut(self, right, |a, b| {
                 match (a, b) {
-                    (Integer(a), Integer(b)) => *a += b,
+                    (Integer(a), Integer(b)) => *a = match a.checked_add(b) {
+                        Some(a) => a,
+                        None => ret_err!(OperationError::new(OperationErrorType::Runtime)),
+                    },
                     (VarType::String(a), VarType::String(b)) => *a = format!("{}{}", a, b),
-                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError),
+                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError::new(OperationErrorType::WithVoid)),
                     _ => ret_err!(InvalidExpressionError::from("Invalid operation.")),
                 }
-                return Ok(Void);
+                Ok(())
             }),
             "-=" => left.operation_mut(self, right, |a, b| {
                 match (a, b) {
-                    (Integer(a), Integer(b)) => *a -= b,
-                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError),
+                    (Integer(a), Integer(b)) => *a = match a.checked_sub(b) {
+                        Some(a) => a,
+                        None => ret_err!(OperationError::new(OperationErrorType::Runtime)),
+                    },
+                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError::new(OperationErrorType::WithVoid)),
                     _ => ret_err!(InvalidExpressionError::from("Invalid operation.")),
                 }
-                return Ok(Void);
+                Ok(())
             }),
             "*=" => left.operation_mut(self, right, |a, b| {
                 match (a, b) {
-                    (Integer(a), Integer(b)) => {*a *= b; Ok(Void)},
-                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError),
+                    (Integer(a), Integer(b)) => *a = match a.checked_mul(b) {
+                        Some(a) => a,
+                        None => ret_err!(OperationError::new(OperationErrorType::Runtime)),
+                    },
+                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError::new(OperationErrorType::WithVoid)),
                     _ => ret_err!(InvalidExpressionError::from("Invalid operation.")),
                 }
+                Ok(())
             }),
             "/=" => left.operation_mut(self, right, |a, b| {
                 match (a, b) {
-                    (Integer(a), Integer(b)) => {*a /= b; Ok(Void)},
-                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError),
+                    (Integer(a), Integer(b)) => *a = match a.checked_div(b) {
+                        Some(a) => a,
+                        None => ret_err!(OperationError::new(OperationErrorType::Runtime)),
+                    },
+                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError::new(OperationErrorType::WithVoid)),
                     _ => ret_err!(InvalidExpressionError::from("Invalid operation.")),
                 }
+                Ok(())
             }),
             "%=" => left.operation_mut(self, right, |a, b| {
                 match (a, b) {
-                    (Integer(a), Integer(b)) => {*a %= b; Ok(Void)},
-                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError),
+                    (Integer(a), Integer(b)) => *a = match a.checked_rem(b) {
+                        Some(a) => a,
+                        None => ret_err!(OperationError::new(OperationErrorType::Runtime)),
+                    },
+                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError::new(OperationErrorType::WithVoid)),
                     _ => ret_err!(InvalidExpressionError::from("Invalid operation.")),
                 }
+                Ok(())
             }),
             "|=" => left.operation_mut(self, right, |a, b| {
                 match (a, b) {
-                    (Integer(a), Integer(b)) => {*a |= b; Ok(Void)},
-                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError),
+                    (Integer(a), Integer(b)) => *a |= b,
+                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError::new(OperationErrorType::WithVoid)),
                     _ => ret_err!(InvalidExpressionError::from("Invalid operation.")),
                 }
+                Ok(())
             }),
             "&=" => left.operation_mut(self, right, |a, b| {
                 match (a, b) {
-                    (Integer(a), Integer(b)) => {*a &= b; Ok(Void)},
-                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError),
+                    (Integer(a), Integer(b)) => *a &= b,
+                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError::new(OperationErrorType::WithVoid)),
                     _ => ret_err!(InvalidExpressionError::from("Invalid operation.")),
                 }
+                Ok(())
             }),
             "^=" => left.operation_mut(self, right, |a, b| {
                 match (a, b) {
-                    (Integer(a), Integer(b)) => {*a ^= b; Ok(Void)},
-                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError),
+                    (Integer(a), Integer(b)) => *a ^= b,
+                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError::new(OperationErrorType::WithVoid)),
                     _ => ret_err!(InvalidExpressionError::from("Invalid operation.")),
                 }
+                Ok(())
             }),
             ">>=" => left.operation_mut(self, right, |a, b| {
                 match (a, b) {
-                    (Integer(a), Integer(b)) => {*a >>= b; Ok(Void)},
-                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError),
+                    (Integer(a), Integer(b)) => *a = match a.checked_shr(b as u32) {
+                        Some(a) => a,
+                        None => ret_err!(OperationError::new(OperationErrorType::Runtime)),
+                    },                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError::new(OperationErrorType::WithVoid)),
                     _ => ret_err!(InvalidExpressionError::from("Invalid operation.")),
                 }
+                Ok(())
             }),
             "<<=" => left.operation_mut(self, right, |a, b| {
                 match (a, b) {
-                    (Integer(a), Integer(b)) => {*a <<= b; Ok(Void)},
-                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError),
+                    (Integer(a), Integer(b)) => *a = match a.checked_shl(b as u32) {
+                        Some(a) => a,
+                        None => ret_err!(OperationError::new(OperationErrorType::Runtime)),
+                    },
+                    (Void | Uninitialized, _) | (_, Void | Uninitialized) => ret_err!(OperationError::new(OperationErrorType::WithVoid)),
                     _ => ret_err!(InvalidExpressionError::from("Invalid operation.")),
                 }
+                Ok(())
             }),
             a => ret_err!(InvalidExpressionError::new(format!("Invalid operator \"{}\".", a))),
         }

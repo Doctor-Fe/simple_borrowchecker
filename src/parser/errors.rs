@@ -68,15 +68,38 @@ impl Error for InvalidExpressionError {}
 
 /// voidと演算しようとしたときのエラーです。
 #[derive(Debug)]
-pub struct OperationError;
+pub struct OperationError {
+    operationerrortype: OperationErrorType,
+}
+
+impl OperationError {
+    pub fn new(t: OperationErrorType) -> OperationError {
+        OperationError { operationerrortype: t }
+    }
+}
 
 impl Display for OperationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Cannot operate with void.")
+        write!(f, "{}", self.operationerrortype)
     }
 }
 
 impl Error for OperationError {}
+
+#[derive(Debug)]
+pub enum OperationErrorType {
+    WithVoid,
+    Runtime,
+}
+
+impl Display for OperationErrorType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", match self {
+            OperationErrorType::WithVoid => "Cannot operate with void.",
+            OperationErrorType::Runtime => "Runtime operation error.",
+        })
+    }
+}
 
 #[derive(Debug)]
 pub struct ReferenceError {

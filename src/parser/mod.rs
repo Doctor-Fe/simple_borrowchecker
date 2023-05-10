@@ -9,7 +9,7 @@ use std::{collections::VecDeque, error::Error};
 
 use log::{debug, info, trace};
 
-use errors::{BracketError, InvalidExpressionError, OperationError, VariableNotFoundError};
+use errors::{BracketError, InvalidExpressionError, OperationError, OperationErrorType, VariableNotFoundError};
 use ElementType::Immediate;
 use ElementType::Monomial;
 use ElementType::Variable;
@@ -204,7 +204,7 @@ impl ExprParser {
                             a.1.push_back(n);
                             trace!("{:?}", a);
                             match self.try_calculate_all(a)? {
-                                VarType::Uninitialized | VarType::Void => ret_err!(OperationError),
+                                VarType::Uninitialized | VarType::Void => ret_err!(OperationError::new(OperationErrorType::WithVoid)),
                                 tmp => list.push((self.cmds[*pointer].clone(), VecDeque::from([Immediate(tmp)]))),
                             }
                         } else {
@@ -236,7 +236,7 @@ impl ExprParser {
                 let mut num = self.try_calculate_all(b)?;
                 while let Some(mut c) = list.pop() {
                     if num.is_empty() {
-                        ret_err!(OperationError)
+                        ret_err!(OperationError::new(OperationErrorType::WithVoid))
                     } else {
                         c.1.push_back(Immediate(num));
                         num = self.try_calculate_all(c)?;
@@ -276,7 +276,7 @@ impl ElementType {
             ElementType::Immediate(i) => Ok(i.clone()),
             ElementType::Monomial(s, e) => {
                 match (e.to_vartype(expr)?, s.as_str()) {
-                    (VarType::Uninitialized | VarType::Void, _) => ret_err!(OperationError),
+                    (VarType::Uninitialized | VarType::Void, _) => ret_err!(OperationError::new(OperationErrorType::WithVoid)),
                     (a, "&") => Ok(VarType::Pointer(Rc::new(a))),
                     (a, "&&") => Ok(VarType::Pointer(Rc::new(VarType::Pointer(Rc::new(a))))),
                     (VarType::Integer(i), "+") => Ok(VarType::Integer(i)),
@@ -301,24 +301,55 @@ impl ElementType {
         return op(self.to_vartype(expr)?, right.to_vartype(expr)?);
     }
 
+    fn operation_number_failable<F>(self, expr: &ExprParser, right: ElementType, op: F) -> Result<VarType, Box<dyn Error>> 
+    where
+        F: Fn(i32, i32) -> Option<i32>
+    {
+        self.operation(expr, right, |a, b| {
+        match (a, b) {
+            (VarType::Integer(p), VarType::Integer(q)) => match op(p, q) {
+                Some(a) => Ok(VarType::Integer(a)),
+                None => ret_err!(OperationError::new(OperationErrorType::Runtime)),
+            }
+            (VarType::Void | VarType::Uninitialized, _) | (_, VarType::Void | VarType::Uninitialized) => ret_err!(OperationError::new(OperationErrorType::WithVoid)),
+            _ => ret_err!(InvalidExpressionError::from("Invalid operation.")),
+        }
+        })
+    }
+
+    fn operation_number<F>(self, expr: &ExprParser, right: ElementType, op: F) -> Result<VarType, Box<dyn Error>> 
+    where
+        F: Fn(i32, i32) -> i32
+    {
+        self.operation(expr, right, |a, b| {
+        match (a, b) {
+            (VarType::Integer(p), VarType::Integer(q)) => Ok(VarType::Integer(op(p, q))),
+            (VarType::Void | VarType::Uninitialized, _) | (_, VarType::Void | VarType::Uninitialized) => ret_err!(OperationError::new(OperationErrorType::WithVoid)),
+            _ => ret_err!(InvalidExpressionError::from("Invalid operation.")),
+        }
+        })
+    }
+
     /// 二項演算子の演算を行います。
     /// - `expr` - 処理を呼び出すパーサのインスタンス
     /// - `right` - 右辺に来る `ElementType` 構造体
     /// - `op` - 具体的な処理内容を記述するクロージャ
     fn operation_mut<F>(self, expr: &mut ExprParser, right: ElementType, op: F) -> Result<VarType, Box<dyn Error>>
     where
-        F: Fn(&mut VarType, VarType) -> Result<VarType, Box<dyn Error>>,
+        F: Fn(&mut VarType, VarType) -> Result<(), Box<dyn Error>>,
     {
         if let Variable(v) = self {
             let c = right.to_vartype(expr)?;
             match expr.get_variable_mut(&v) {
-                Some(a) => return op(a, c),
+                Some(a) => match op(a, c) {
+                    Ok(_) => Ok(VarType::Void),
+                    Err(e) => Err(e),
+                },
                 None => ret_err!(VariableNotFoundError::new(v.clone())),
             }
+        } else {
+            ret_err!(InvalidExpressionError::from("The left-hand must be variable."));
         }
-        info!("left-hand: {:?}", self);
-        info!("right-hand: {:?}", right);
-        ret_err!(InvalidExpressionError::from("The left-hand must be variable."));
     }
 
 }
