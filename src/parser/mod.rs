@@ -5,17 +5,18 @@ mod variables;
 
 use std::collections::{HashMap, BTreeMap};
 use std::rc::Rc;
-use std::{collections::VecDeque, error::Error};
+use std::collections::VecDeque;
 
 use log::{debug, info, trace};
 
-use errors::{BracketError, InvalidExpressionError, OperationError, OperationErrorType, VariableNotFoundError};
+use errors::{ParseError, ParseErrorType};
 use ElementType::Immediate;
 use ElementType::Monomial;
 use ElementType::Variable;
 
 use variables::VarType;
-use crate::ret_err;
+
+use crate::bracket_error;
 
 /// 式を解釈するパーサです。現時点ではインタプリタとしてのみ動作します。
 #[derive(Debug)]
@@ -45,7 +46,7 @@ impl ExprParser {
 
     /// 文字列を式として解釈します。
     /// * `cmd` - 式として扱う文字列
-    pub fn parse(&mut self, cmd: &String) -> Result<VarType, Box<dyn Error>> {
+    pub fn parse(&mut self, cmd: &String) -> Result<VarType, ParseError> {
         info!("Start parsing...");
         self.split_elements(cmd); // 要素単位に分解
         debug!("Splitted elements: {:?}", self.cmds);
@@ -61,11 +62,11 @@ impl ExprParser {
             }
         }
         match bracket1.cmp(&0) {
-            std::cmp::Ordering::Less => ret_err!(BracketError::new("(")),
-            std::cmp::Ordering::Greater => ret_err!(BracketError::new(")")),
+            std::cmp::Ordering::Less => bracket_error!("("),
+            std::cmp::Ordering::Greater => bracket_error!(")"),
             std::cmp::Ordering::Equal => match bracket2.cmp(&0) {
-                std::cmp::Ordering::Less => ret_err!(BracketError::new("{")),
-                std::cmp::Ordering::Greater => ret_err!(BracketError::new("}")),
+                std::cmp::Ordering::Less => bracket_error!("{"),
+                std::cmp::Ordering::Greater => bracket_error!("}"),
                 std::cmp::Ordering::Equal => {
                     let mut p = 0;
                     return self.parse_sentence(&mut p);
@@ -76,7 +77,7 @@ impl ExprParser {
 
     /// 分割された要素を解釈する関数です。
     /// * `pointer` - 次に解釈する単語を指すポインタ
-    fn parse_sentence(&mut self, pointer: &mut usize) -> Result<VarType, Box<dyn Error>> {
+    fn parse_sentence(&mut self, pointer: &mut usize) -> Result<VarType, ParseError> {
         self.depth += 1;
         info!("Start parsing as sentence from {}.", pointer);
         let mut last = VarType::Void;
@@ -89,10 +90,10 @@ impl ExprParser {
                             if a.parse::<i32>().is_err() {
                                 self.create_variable(a.clone());
                             } else {
-                                ret_err!(InvalidExpressionError::from("Next of \"let\" keyword must be variable name."))
+                                return Err(ParseError::new(ParseErrorType::InvalidExpression("Next of \"let\" keyword must be variable name.".to_string())))
                             }
                         } else {
-                            ret_err!(InvalidExpressionError::from("Next of \"let\" keyword must be variable name."))
+                            return Err(ParseError::new(ParseErrorType::InvalidExpression("Next of \"let\" keyword must be variable name.".to_string())))
                         }
                     },
                 Some("debug") => {
@@ -131,7 +132,7 @@ impl ExprParser {
 
     /// 式を解釈する関数です。
     /// * `pointer` - 次に解釈する単語を指すポインタ
-    fn parse_expression(&mut self, pointer: &mut usize) -> Result<VarType, Box<dyn Error>> {
+    fn parse_expression(&mut self, pointer: &mut usize) -> Result<VarType, ParseError> {
         info!("Start parsing as expression from {}.", pointer);
         let mut list: Vec<(String, VecDeque<ElementType>)> = Vec::new();
         let mut monomial_flag: Vec<String> = vec![];
@@ -149,13 +150,13 @@ impl ExprParser {
                             Some(b'x') => 16,
                             Some(b'b') => 2,
                             Some(b'0'..=b'9') | None => 10,
-                            Some(_) => ret_err!(InvalidExpressionError::from("Invalid integer."))
+                            Some(_) => return Err(ParseError::new(ParseErrorType::InvalidInteger))
                         },
                         a if b'1' <= a && a <= b'9' => {
                             num = (a - b'0') as i32;
                             10
                         }
-                        _ => ret_err!(InvalidExpressionError::from("Invalid integer."))
+                        _ => return Err(ParseError::new(ParseErrorType::InvalidInteger))
                     };
                     for i in t {
                         num *= base;
@@ -164,12 +165,12 @@ impl ExprParser {
                             b'a'..=b'f' => i - b'a' + 10,
                             b'A'..=b'F' => i - b'A' + 10,
                             b'_' => continue,
-                            _ => ret_err!(InvalidExpressionError::from("Invalid integer."))
+                            _ => return Err(ParseError::new(ParseErrorType::InvalidInteger))
                         } as i32;
                         if t < base {
                             num += t;
                         } else {
-                            ret_err!(InvalidExpressionError::new(format!("Invalid integer. `{}` is not {}-based number.", a, base)))
+                            return Err(ParseError::new(ParseErrorType::InvalidExpression(format!("Invalid integer. `{}` is not {}-based number.", a, base))))
                         }
                     }
                     Immediate(VarType::Integer(num))
@@ -180,9 +181,9 @@ impl ExprParser {
                     *pointer += 1;
                     continue;
                 },
-                binomial if Self::get_priority(&binomial).is_some() => ret_err!(InvalidExpressionError::new(format!("Illegal operator \"{}\".", binomial))),
+                binomial if Self::get_priority(&binomial).is_some() => return Err(ParseError::new(ParseErrorType::InvalidExpression(format!("Illegal operator \"{}\".", binomial)))),
                 string if string.starts_with('\"') && string.ends_with('\"') => Immediate(VarType::new_string(string)),
-                a => ret_err!(VariableNotFoundError::new(String::from(a))),
+                a => return Err(ParseError::new(ParseErrorType::VariableNotFound(a.to_string()))),
             };
             let n = {
                 let mut tmp = n;
@@ -204,7 +205,7 @@ impl ExprParser {
                             a.1.push_back(n);
                             trace!("{:?}", a);
                             match self.try_calculate_all(a)? {
-                                VarType::Uninitialized | VarType::Void => ret_err!(OperationError::new(OperationErrorType::WithVoid)),
+                                VarType::Uninitialized | VarType::Void => return Err(ParseError::new(ParseErrorType::VoidOperation)),
                                 tmp => list.push((self.cmds[*pointer].clone(), VecDeque::from([Immediate(tmp)]))),
                             }
                         } else {
@@ -236,7 +237,7 @@ impl ExprParser {
                 let mut num = self.try_calculate_all(b)?;
                 while let Some(mut c) = list.pop() {
                     if num.is_empty() {
-                        ret_err!(OperationError::new(OperationErrorType::WithVoid))
+                        return Err(ParseError::new(ParseErrorType::VoidOperation))
                     } else {
                         c.1.push_back(Immediate(num));
                         num = self.try_calculate_all(c)?;
@@ -265,18 +266,18 @@ pub enum ElementType {
 impl ElementType {
     /// 数値へ変換します。
     /// * `expr` - 関数を呼び出した `ExprParser`
-    fn to_vartype(&self, expr: &ExprParser) -> Result<VarType, Box<dyn Error>> {
+    fn to_vartype(&self, expr: &ExprParser) -> Result<VarType, ParseError> {
         match self {
             ElementType::Variable(s) => {
                 match expr.get_variable(s).clone() {
-                    VarType::Uninitialized => ret_err!(VariableNotFoundError::new(s.clone())),
+                    VarType::Uninitialized => return Err(ParseError::new(ParseErrorType::VariableNotFound(s.clone()))),
                     a => return Ok(a),
                 }
             },
             ElementType::Immediate(i) => Ok(i.clone()),
             ElementType::Monomial(s, e) => {
                 match (e.to_vartype(expr)?, s.as_str()) {
-                    (VarType::Uninitialized | VarType::Void, _) => ret_err!(OperationError::new(OperationErrorType::WithVoid)),
+                    (VarType::Uninitialized | VarType::Void, _) => return Err(ParseError::new(ParseErrorType::VoidOperation)),
                     (a, "&") => Ok(VarType::Pointer(Rc::new(a))),
                     (a, "&&") => Ok(VarType::Pointer(Rc::new(VarType::Pointer(Rc::new(a))))),
                     (VarType::Integer(i), "+") => Ok(VarType::Integer(i)),
@@ -284,7 +285,7 @@ impl ElementType {
                     (VarType::Integer(i), "~") => Ok(VarType::Integer(!i)),
                     (VarType::Integer(i), "!") => Ok(VarType::Integer(if i == 0 {1} else {0})),
                     (VarType::Pointer(p), "*") => Ok((*p).clone()),
-                    (b, a) => ret_err!(InvalidExpressionError::new(format!("Monomial \"{}\" is not for {}.", a, b))),
+                    (b, a) => return Err(ParseError::new(ParseErrorType::InvalidExpression(format!("Monomial \"{}\" is not for {}.", a, b)))),
                 }
             }
         }
@@ -294,14 +295,14 @@ impl ElementType {
     /// - `expr` - 処理を呼び出すパーサのインスタンス
     /// - `right` - 右辺に来る `ElementType` 構造体
     /// - `op` - 具体的な処理内容を記述するクロージャ
-    fn operation<F>(self, expr: &ExprParser, right: ElementType, op: F) -> Result<VarType, Box<dyn Error>>
+    fn operation<F>(self, expr: &ExprParser, right: ElementType, op: F) -> Result<VarType, ParseError>
     where
-        F: Fn(VarType, VarType) -> Result<VarType, Box<dyn Error>>,
+        F: Fn(VarType, VarType) -> Result<VarType, ParseError>,
     {
         return op(self.to_vartype(expr)?, right.to_vartype(expr)?);
     }
 
-    fn operation_number_failable<F>(self, expr: &ExprParser, right: ElementType, op: F) -> Result<VarType, Box<dyn Error>> 
+    fn operation_number_failable<F>(self, expr: &ExprParser, right: ElementType, op: F, error_type: &'static ParseErrorType) -> Result<VarType, ParseError> 
     where
         F: Fn(i32, i32) -> Option<i32>
     {
@@ -309,23 +310,23 @@ impl ElementType {
         match (a, b) {
             (VarType::Integer(p), VarType::Integer(q)) => match op(p, q) {
                 Some(a) => Ok(VarType::Integer(a)),
-                None => ret_err!(OperationError::new(OperationErrorType::Runtime)),
+                None => return Err(ParseError::new(error_type.clone())),
             }
-            (VarType::Void | VarType::Uninitialized, _) | (_, VarType::Void | VarType::Uninitialized) => ret_err!(OperationError::new(OperationErrorType::WithVoid)),
-            _ => ret_err!(InvalidExpressionError::from("Invalid operation.")),
+            (VarType::Void | VarType::Uninitialized, _) | (_, VarType::Void | VarType::Uninitialized) => return Err(ParseError::new(ParseErrorType::VoidOperation)),
+            _ => return Err(ParseError::new(ParseErrorType::InvalidExpression("Invalid operation.".to_string()))),
         }
         })
     }
 
-    fn operation_number<F>(self, expr: &ExprParser, right: ElementType, op: F) -> Result<VarType, Box<dyn Error>> 
+    fn operation_number<F>(self, expr: &ExprParser, right: ElementType, op: F) -> Result<VarType, ParseError> 
     where
         F: Fn(i32, i32) -> i32
     {
         self.operation(expr, right, |a, b| {
         match (a, b) {
             (VarType::Integer(p), VarType::Integer(q)) => Ok(VarType::Integer(op(p, q))),
-            (VarType::Void | VarType::Uninitialized, _) | (_, VarType::Void | VarType::Uninitialized) => ret_err!(OperationError::new(OperationErrorType::WithVoid)),
-            _ => ret_err!(InvalidExpressionError::from("Invalid operation.")),
+            (VarType::Void | VarType::Uninitialized, _) | (_, VarType::Void | VarType::Uninitialized) => return Err(ParseError::new(ParseErrorType::VoidOperation)),
+            _ => return Err(ParseError::new(ParseErrorType::InvalidExpression("Invalid operation.".to_string()))),
         }
         })
     }
@@ -334,9 +335,9 @@ impl ElementType {
     /// - `expr` - 処理を呼び出すパーサのインスタンス
     /// - `right` - 右辺に来る `ElementType` 構造体
     /// - `op` - 具体的な処理内容を記述するクロージャ
-    fn operation_mut<F>(self, expr: &mut ExprParser, right: ElementType, op: F) -> Result<VarType, Box<dyn Error>>
+    fn operation_mut<F>(self, expr: &mut ExprParser, right: ElementType, op: F) -> Result<VarType, ParseError>
     where
-        F: Fn(&mut VarType, VarType) -> Result<(), Box<dyn Error>>,
+        F: Fn(&mut VarType, VarType) -> Result<(), ParseError>,
     {
         if let Variable(v) = self {
             let c = right.to_vartype(expr)?;
@@ -345,10 +346,10 @@ impl ElementType {
                     Ok(_) => Ok(VarType::Void),
                     Err(e) => Err(e),
                 },
-                None => ret_err!(VariableNotFoundError::new(v.clone())),
+                None => return Err(ParseError::new(ParseErrorType::VariableNotFound(v.clone()))),
             }
         } else {
-            ret_err!(InvalidExpressionError::from("The left-hand must be variable."));
+            return Err(ParseError::new(ParseErrorType::InvalidExpression("The left-hand must be variable.".to_string())));
         }
     }
 

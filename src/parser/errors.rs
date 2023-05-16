@@ -1,151 +1,73 @@
 use std::{fmt::Display, error::Error};
 
-/// 未定義の変数を参照しようとしたときのエラーです。
 #[derive(Debug)]
-pub struct VariableNotFoundError {
-    name: String,
+pub struct ParseError {
+    error_type: ParseErrorType,
 }
 
-impl VariableNotFoundError {
-    pub fn new(name: String) -> VariableNotFoundError {
-        VariableNotFoundError { name }
+impl ParseError {
+    pub fn new(data: ParseErrorType) -> Self {
+        ParseError{ error_type: data }
     }
 }
 
-impl Display for VariableNotFoundError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Variable \"{}\" was not found.", self.name)
-    }
-}
-
-impl Error for VariableNotFoundError {}
-
-/// かっこの数が一致しないときのエラーです。
-#[derive(Debug)]
-pub struct BracketError<'a> {
-    bracket_type: &'a str
-}
-
-impl <'a>BracketError<'a> {
-    pub fn new(bracket_type: &'a str) -> BracketError<'a> {
-        BracketError { bracket_type }
-    }
-}
-
-impl <'a>Display for BracketError<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "There are no corresponding brackets to \"{}\"", self.bracket_type)
-    }
-}
-
-impl <'a>Error for BracketError<'a> {}
-
-/// 無効な式が入力されたときのエラーです。
-#[derive(Debug)]
-pub struct InvalidExpressionError {
-    message: String
-}
-
-impl InvalidExpressionError {
-    pub fn new(str: String) -> InvalidExpressionError {
-        InvalidExpressionError { message: str.to_string() }
-    }
-}
-
-impl From<&str> for InvalidExpressionError {
-    fn from(value: &str) -> Self {
-        InvalidExpressionError::new(value.to_string())
-    }
-}
-
-impl Display for InvalidExpressionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Invalid expression detected.\n{}", self.message)
-    }
-}
-
-impl Error for InvalidExpressionError {}
-
-/// voidと演算しようとしたときのエラーです。
-#[derive(Debug)]
-pub struct OperationError {
-    operationerrortype: OperationErrorType,
-}
-
-impl OperationError {
-    pub fn new(t: OperationErrorType) -> OperationError {
-        OperationError { operationerrortype: t }
-    }
-}
-
-impl Display for OperationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.operationerrortype)
-    }
-}
-
-impl Error for OperationError {}
-
-#[derive(Debug)]
-pub enum OperationErrorType {
-    WithVoid,
-    Runtime,
-}
-
-impl Display for OperationErrorType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", match self {
-            OperationErrorType::WithVoid => "Cannot operate with void.",
-            OperationErrorType::Runtime => "Runtime operation error.",
-        })
-    }
-}
-
-#[derive(Debug)]
-pub struct ReferenceError {
-    error_type: ReferenceErrorType
-}
-
-impl ReferenceError {
-    pub fn invalid_dereference() -> Self {
-        ReferenceError { error_type: ReferenceErrorType::InvalidDereference }
-    }
-
-    pub fn uninitialized() -> Self {
-        ReferenceError { error_type: ReferenceErrorType::Uninitialized }
-    }
-}
-
-impl Display for ReferenceError {
+impl Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.error_type)
     }
 }
 
-impl Error for ReferenceError {}
+impl Error for ParseError {}
 
-#[derive(Debug)]
-pub enum ReferenceErrorType {
+#[derive(Clone, Debug)]
+pub enum ParseErrorType {
+    Bracket(String),
+    DivideByZero,
     InvalidDereference,
+    InvalidExpression(String),
+    InvalidInteger,
+    MemoryLeak(usize, usize),
+    OperationOverflow,
+    OperationUnderflow,
+    Unhandled,
     Uninitialized,
+    VariableNotFound(String),
+    VoidOperation,
 }
 
-impl Display for ReferenceErrorType {
+impl Display for ParseErrorType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", match self {
-            ReferenceErrorType::InvalidDereference => "Invalid dereference.",
-            ReferenceErrorType::Uninitialized => "Variable was uninitialized.",
-        })
+        match self {
+            ParseErrorType::Bracket(bracket_type) => write!(f, "There are no corresponding brackets to \"{}\"", bracket_type),
+            ParseErrorType::DivideByZero => write!(f, "Divide by zero error"),
+            ParseErrorType::InvalidDereference => write!(f, "Invalid dereference."),
+            ParseErrorType::InvalidExpression(message) => write!(f, "Invalid expression: {}", message),
+            ParseErrorType::InvalidInteger => write!(f, "Invalid integer."),
+            ParseErrorType::OperationOverflow => write!(f, "Overflow occured"),
+            ParseErrorType::OperationUnderflow => write!(f, "Underflow occured"),
+            ParseErrorType::MemoryLeak(required, current) => write!(f, "{} bytes required but ensured memory was {} bytes.", required, current),
+            ParseErrorType::Unhandled => write!(f, "Unhandled error."),
+            ParseErrorType::Uninitialized => write!(f, "Variable was uninitialized"),
+            ParseErrorType::VariableNotFound(variable) => write!(f, "Variable \"{}\" was not found.", variable),
+            ParseErrorType::VoidOperation => write!(f, "Cannot operate with void."),
+        }
     }
 }
 
-/// `Error` を実装した構造体をボックス化して `Result` 列挙型に入れたものを返すマクロです。
 #[macro_export]
-macro_rules! ret_err {
+macro_rules! log_error {
+    ($x: expr) => {
+        log::error!("{}", $x)
+    };
+}
+
+#[macro_export]
+macro_rules! bracket_error {
     ($x: expr) => {
         {
+            let e = ParseError::new(ParseErrorType::Bracket($x.to_string()));
             log::error!("{}", $x);
-            return Err(Box::new($x));
+            return Err(e);
         }
     };
 }
