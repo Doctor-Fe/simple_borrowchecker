@@ -1,11 +1,11 @@
 use std::cmp::Ordering;
-use std::ops::{BitOr, BitAnd, BitXor, Shl, Shr};
 use std::collections::VecDeque;
+use std::ops::{BitAnd, BitOr, BitXor, Shl, Shr};
 
 use crate::parser::errors::{ParseError, ParseErrorType};
 
-use super::{ExprParser, ElementType, VarType};
-use super::VarType::{Integer, Void, Uninitialized};
+use super::VarType::{Integer, Uninitialized, Void};
+use super::{ElementType, ExprParser, VarType};
 
 impl ExprParser {
     /// 二項演算子の優先順位を返します。
@@ -207,7 +207,7 @@ impl ExprParser {
                 }
                 Ok(())
             }),
-            a => return Err(ParseError::new(ParseErrorType::InvalidExpression(format!("Invalid operator \"{}\".", a)))),
+            a => Err(ParseError::new(ParseErrorType::InvalidExpression(format!("Invalid operator \"{}\".", a)))),
         }
     }
 }

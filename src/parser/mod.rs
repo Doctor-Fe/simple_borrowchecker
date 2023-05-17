@@ -3,9 +3,9 @@ mod op;
 mod splitting;
 mod variables;
 
-use std::collections::{HashMap, BTreeMap};
-use std::rc::Rc;
 use std::collections::VecDeque;
+use std::collections::{BTreeMap, HashMap};
+use std::rc::Rc;
 
 use log::{info, trace};
 
@@ -23,7 +23,7 @@ use crate::bracket_error;
 pub struct ExprParser {
     cmds: Vec<String>,
     variables: HashMap<String, BTreeMap<usize, VarType>>,
-    depth: usize
+    depth: usize,
 }
 
 impl ExprParser {
@@ -67,7 +67,7 @@ impl ExprParser {
                 std::cmp::Ordering::Equal => {
                     let mut p = 0;
                     return self.parse_sentence(&mut p);
-                },
+                }
             },
         }; // かっこが一致することを確認
     }
@@ -80,28 +80,23 @@ impl ExprParser {
         let mut last = VarType::Void;
         while *pointer < self.cmds.len() {
             trace!("Pointer: {} ({})", pointer, self.cmds[*pointer]);
-            match self.cmds.get(*pointer).map(|a| a.as_str()) {
-                Some("}" | ";") => break,
-                Some("let") => {
-                        if let Some(a) = self.cmds.get(*pointer + 1) {
-                            if a.parse::<i32>().is_err() {
-                                self.create_variable(a.clone());
-                            } else {
-                                return Err(ParseError::new(ParseErrorType::InvalidExpression("Next of \"let\" keyword must be variable name.".to_string())))
-                            }
-                        } else {
-                            return Err(ParseError::new(ParseErrorType::InvalidExpression("Next of \"let\" keyword must be variable name.".to_string())))
-                        }
-                    },
-                Some("debug") => {
+            match self.cmds[*pointer].as_str() {
+                "}" | ";" => break,
+                "let" => if let Some(a) = self.cmds.get(*pointer + 1) {
+                    if a.parse::<i32>().is_err() {
+                        self.create_variable(a.clone());
+                    } else {
+                        return Err(ParseError::new(ParseErrorType::InvalidExpression("Next of \"let\" keyword must be variable name.".to_string())))
+                    }
+                } else {
+                    return Err(ParseError::new(ParseErrorType::InvalidExpression("Next of \"let\" keyword must be variable name.".to_string())))
+                },
+                "debug" => {
                     *pointer += 1;
                     last = self.parse_expression(pointer)?;
                     println!("{:?}", last);
                 }
-                Some(_) => {
-                    last = self.parse_expression(pointer)?;
-                },
-                None => unreachable!(),
+                _ => last = self.parse_expression(pointer)?,
             }
             match self.cmds.get(*pointer).map(|a| a.as_str()) {
                 Some("}") => break,
@@ -171,7 +166,7 @@ impl ExprParser {
                         }
                     }
                     Immediate(VarType::Integer(num))
-                },
+                }
                 variable if self.has_variable(variable) => Variable(String::from(variable)),
                 monomial if Self::is_monomial(&monomial) => {
                     monomial_flag.push(monomial.to_string());
@@ -241,10 +236,8 @@ impl ExprParser {
                     }
                 }
                 return Ok(num);
-            },
-            None => {
-                return Ok(VarType::Void);
-            },
+            }
+            None => return Ok(VarType::Void),
         }
     }
 }
@@ -265,25 +258,21 @@ impl ElementType {
     /// * `expr` - 関数を呼び出した `ExprParser`
     fn to_vartype(&self, expr: &ExprParser) -> Result<VarType, ParseError> {
         match self {
-            ElementType::Variable(s) => {
-                match expr.get_variable(s).clone() {
-                    VarType::Uninitialized => return Err(ParseError::new(ParseErrorType::VariableNotFound(s.clone()))),
-                    a => return Ok(a),
-                }
+            ElementType::Variable(s) => match expr.get_variable(s).clone() {
+                VarType::Uninitialized => return Err(ParseError::new(ParseErrorType::VariableNotFound(s.clone()))),
+                a => return Ok(a),
             },
             ElementType::Immediate(i) => Ok(i.clone()),
-            ElementType::Monomial(s, e) => {
-                match (e.to_vartype(expr)?, s.as_str()) {
-                    (VarType::Uninitialized | VarType::Void, _) => return Err(ParseError::new(ParseErrorType::VoidOperation)),
-                    (a, "&") => Ok(VarType::Pointer(Rc::new(a))),
-                    (a, "&&") => Ok(VarType::Pointer(Rc::new(VarType::Pointer(Rc::new(a))))),
-                    (VarType::Integer(i), "+") => Ok(VarType::Integer(i)),
-                    (VarType::Integer(i), "-") => Ok(VarType::Integer(-i)),
-                    (VarType::Integer(i), "~") => Ok(VarType::Integer(!i)),
-                    (VarType::Integer(i), "!") => Ok(VarType::Integer(if i == 0 {1} else {0})),
-                    (VarType::Pointer(p), "*") => Ok((*p).clone()),
-                    (b, a) => return Err(ParseError::new(ParseErrorType::InvalidExpression(format!("Monomial \"{}\" is not for {}.", a, b)))),
-                }
+            ElementType::Monomial(s, e) => match (e.to_vartype(expr)?, s.as_str()) {
+                (VarType::Uninitialized | VarType::Void, _) => Err(ParseError::new(ParseErrorType::VoidOperation)),
+                (a, "&") => Ok(VarType::Pointer(Rc::new(a))),
+                (a, "&&") => Ok(VarType::Pointer(Rc::new(VarType::Pointer(Rc::new(a))))),
+                (VarType::Integer(i), "+") => Ok(VarType::Integer(i)),
+                (VarType::Integer(i), "-") => Ok(VarType::Integer(-i)),
+                (VarType::Integer(i), "~") => Ok(VarType::Integer(!i)),
+                (VarType::Integer(i), "!") => Ok(VarType::Integer(if i == 0 {1} else {0})),
+                (VarType::Pointer(p), "*") => Ok((*p).clone()),
+                (b, a) => Err(ParseError::new(ParseErrorType::InvalidExpression(format!("Monomial \"{}\" is not for {}.", a, b)))),
             }
         }
     }
@@ -308,7 +297,7 @@ impl ElementType {
             (VarType::Integer(p), VarType::Integer(q)) => match op(p, q) {
                 Some(a) => Ok(VarType::Integer(a)),
                 None => return Err(ParseError::new(error_type.clone())),
-            }
+            },
             (VarType::Void | VarType::Uninitialized, _) | (_, VarType::Void | VarType::Uninitialized) => return Err(ParseError::new(ParseErrorType::VoidOperation)),
             _ => return Err(ParseError::new(ParseErrorType::InvalidExpression("Invalid operation.".to_string()))),
         }
@@ -320,11 +309,11 @@ impl ElementType {
         F: Fn(i32, i32) -> i32
     {
         self.operation(expr, right, |a, b| {
-        match (a, b) {
-            (VarType::Integer(p), VarType::Integer(q)) => Ok(VarType::Integer(op(p, q))),
-            (VarType::Void | VarType::Uninitialized, _) | (_, VarType::Void | VarType::Uninitialized) => return Err(ParseError::new(ParseErrorType::VoidOperation)),
-            _ => return Err(ParseError::new(ParseErrorType::InvalidExpression("Invalid operation.".to_string()))),
-        }
+            match (a, b) {
+                (VarType::Integer(p), VarType::Integer(q)) => Ok(VarType::Integer(op(p, q))),
+                (VarType::Void | VarType::Uninitialized, _) | (_, VarType::Void | VarType::Uninitialized) => return Err(ParseError::new(ParseErrorType::VoidOperation)),
+                _ => return Err(ParseError::new(ParseErrorType::InvalidExpression("Invalid operation.".to_string()))),
+            }
         })
     }
 

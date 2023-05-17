@@ -1,4 +1,4 @@
-use std::{fmt::Display, rc::Rc, collections::BTreeMap};
+use std::{collections::BTreeMap, fmt::Display, rc::Rc};
 
 use log::info;
 
@@ -45,13 +45,13 @@ impl ExprParser {
                     info!("Variable \"{}\" was created with a new scope.", name);
                     a.insert(self.depth, VarType::Uninitialized);
                 }
-            },
+            }
             None => {
                 info!("Variable \"{}\" was created.", name);
                 let mut tmp = BTreeMap::new();
                 tmp.insert(self.depth, VarType::Uninitialized);
                 self.variables.insert(name, tmp);
-            },
+            }
         }
         info!("{:?}", self.variables);
     }
@@ -95,7 +95,7 @@ impl PartialOrd for VarType {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         match (self, other) {
             (VarType::Integer(a), VarType::Integer(b)) => Some(a.cmp(b)),
-            _ => None
+            _ => None,
         }
     }
 }

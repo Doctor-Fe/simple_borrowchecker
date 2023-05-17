@@ -9,7 +9,7 @@ impl ExprParser {
                 let mut str = String::new();
                 e.read_to_string(&mut str)?;
                 return Ok(ExprParser::from_string(&str));
-            },
+            }
             Err(_) => todo!(),
         }
     }
@@ -40,7 +40,7 @@ impl ExprParser {
                     Some(&'*') => {
                         comment_out = Some(CommentType::MultiLine);
                         continue;
-                    },
+                    }
                     _ => {}
                 }
             }
@@ -58,7 +58,7 @@ impl ExprParser {
                             word.clear();
                         }
                         word.push(a);
-                    },
+                    }
                     CharType::Punctuation => {
                         word.push(a);
                         if a == '"' {
@@ -73,11 +73,11 @@ impl ExprParser {
                                 word.push(a);
                             }
                         }
-                    },
+                    }
                     CharType::WhiteSpace => if !word.is_empty() {
                         parser.cmds.push(String::from_iter(&word));
                         word.clear();
-                    },
+                    }
                 }
             }
         }

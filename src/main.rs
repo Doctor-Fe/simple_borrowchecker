@@ -1,4 +1,4 @@
-use std::{io::{BufWriter, Write}, env};
+use std::{env, io::{BufWriter, Write}};
 
 use crate::parser::ExprParser;
 
@@ -6,21 +6,17 @@ pub mod parser;
 
 fn main() {
     init_logger();
-    
+
     let mut writer = BufWriter::new(std::io::stdout().lock());
     match env::args().skip(1).next() {
-        Some(path) => {
-            match ExprParser::from_file(&path) {
-                Ok(mut a) => match a.parse() {
-                    Ok(a) => _ = writeln!(writer, "Succed: {}", a),
-                    Err(p) => error_writeln!(writer, p),
-                },
-                Err(e) => error_writeln!(writer, e),
-            }
+        Some(path) => match ExprParser::from_file(&path) {
+            Ok(mut a) => match a.parse() {
+                Ok(a) => _ = writeln!(writer, "Succed: {}", a),
+                Err(p) => error_writeln!(writer, p),
+            },
+            Err(e) => error_writeln!(writer, e),
         },
-        None => {
-            _ = writeln!(writer, "Enter the file name.");
-        },
+        None => _ = writeln!(writer, "Enter the file name."),
     }
 }
 
@@ -43,10 +39,7 @@ fn init_logger() {
         })
         .chain(fern::log_file(format!("logs/debug_{time}.log")).unwrap());
 
-    base_config
-        .chain(debug)
-        .apply()
-        .unwrap();
+    base_config.chain(debug).apply().unwrap();
 }
 
 #[macro_export]
