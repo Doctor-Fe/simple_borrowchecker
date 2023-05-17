@@ -1,9 +1,21 @@
+use std::{fs::File, io::{Result, Read}};
+
 use super::ExprParser;
 
 impl ExprParser {
-    /// 入力された文字列を要素毎に分割します。
-    /// * `cmd` - 分割する文字列
-    pub fn split_elements(&mut self, cmd: &String) {
+    pub fn from_file(file: &str) -> Result<ExprParser> {
+        match File::open(file) {
+            Ok(mut e) => {
+                let mut str = String::new();
+                e.read_to_string(&mut str)?;
+                return Ok(ExprParser::from_string(&str));
+            },
+            Err(_) => todo!(),
+        }
+    }
+
+    pub fn from_string(cmd: &str) -> ExprParser {
+        let mut parser = ExprParser::new();
         let mut tmp = cmd.chars().rev().collect::<Vec<char>>();
         let mut word: Vec<char> = Vec::new();
         let mut is_string = false;
@@ -42,7 +54,7 @@ impl ExprParser {
                 match CharType::get_chartype(a) {
                     CharType::Normal => {
                         if word.last().map(|a| CharType::get_chartype(*a) != CharType::Normal).unwrap_or(false) {
-                            self.cmds.push(String::from_iter(&word));
+                            parser.cmds.push(String::from_iter(&word));
                             word.clear();
                         }
                         word.push(a);
@@ -54,22 +66,25 @@ impl ExprParser {
                         } else if !word.is_empty() {
                             if Self::get_priority(&String::from_iter(&word)).is_none() {
                                 word.pop();
-                                self.cmds.push(String::from_iter(&word));
+                                if !word.is_empty() {
+                                    parser.cmds.push(String::from_iter(&word));
+                                }
                                 word.clear();
                                 word.push(a);
                             }
                         }
                     },
                     CharType::WhiteSpace => if !word.is_empty() {
-                        self.cmds.push(String::from_iter(&word));
+                        parser.cmds.push(String::from_iter(&word));
                         word.clear();
                     },
                 }
             }
         }
         if !word.is_empty() {
-            self.cmds.push(String::from_iter(word));
+            parser.cmds.push(String::from_iter(word));
         }
+        return parser;
     }
 
 }

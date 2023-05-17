@@ -7,7 +7,7 @@ use std::collections::{HashMap, BTreeMap};
 use std::rc::Rc;
 use std::collections::VecDeque;
 
-use log::{debug, info, trace};
+use log::{info, trace};
 
 use errors::{ParseError, ParseErrorType};
 use ElementType::Immediate;
@@ -46,10 +46,7 @@ impl ExprParser {
 
     /// 文字列を式として解釈します。
     /// * `cmd` - 式として扱う文字列
-    pub fn parse(&mut self, cmd: &String) -> Result<VarType, ParseError> {
-        info!("Start parsing...");
-        self.split_elements(cmd); // 要素単位に分解
-        debug!("Splitted elements: {:?}", self.cmds);
+    pub fn parse(&mut self) -> Result<VarType, ParseError> {
         let mut bracket1: i32 = 0;
         let mut bracket2: i32 = 0;
         for a in &self.cmds {

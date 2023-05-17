@@ -1,4 +1,4 @@
-use std::{io::{BufWriter, Write, Read, BufReader}, fs::File};
+use std::{io::{BufWriter, Write}, env};
 
 use crate::parser::ExprParser;
 
@@ -8,28 +8,19 @@ fn main() {
     init_logger();
     
     let mut writer = BufWriter::new(std::io::stdout().lock());
-    let mut parser = ExprParser::new();
-    loop {
-        let mut s: String = String::new();
-        _ = write!(writer, "Enter file name > ");
-        _ = writer.flush();
-        _ = std::io::stdin().read_line(&mut s);
-        match File::open(s.trim()) {
-            Ok(a) => {
-                let mut stream = BufReader::new(a);
-                s.clear();
-                if let Err(a) = stream.read_to_string(&mut s) {
-                    error_writeln!(writer, a);
-                } else {
-                    match parser.parse(&s) {
-                        Ok(a) => _ = writeln!(writer, "Succeed: {}", a),
-                        Err(a) => error_writeln!(writer, a),
-                    }
-                    parser.clear_all();
-                }
-            },
-            Err(e) => error_writeln!(writer, e),
-        }
+    match env::args().skip(1).next() {
+        Some(path) => {
+            match ExprParser::from_file(&path) {
+                Ok(mut a) => match a.parse() {
+                    Ok(a) => _ = writeln!(writer, "Succed: {}", a),
+                    Err(p) => error_writeln!(writer, p),
+                },
+                Err(e) => error_writeln!(writer, e),
+            }
+        },
+        None => {
+            _ = writeln!(writer, "Enter the file name.");
+        },
     }
 }
 

@@ -1,5 +1,3 @@
-pub mod data;
-
 use std::{fmt::Display, rc::Rc, collections::BTreeMap};
 
 use log::info;
