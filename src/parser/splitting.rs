@@ -4,14 +4,10 @@ use super::ExprParser;
 
 impl ExprParser {
     pub fn from_file(file: &str) -> Result<ExprParser> {
-        match File::open(file) {
-            Ok(mut e) => {
-                let mut str = String::new();
-                e.read_to_string(&mut str)?;
-                return Ok(ExprParser::from_string(&str));
-            }
-            Err(_) => todo!(),
-        }
+        let mut e = File::open(file)?;
+        let mut str = String::new();
+        e.read_to_string(&mut str)?;
+        return Ok(ExprParser::from_string(&str));
     }
 
     pub fn from_string(cmd: &str) -> ExprParser {
@@ -24,7 +20,7 @@ impl ExprParser {
             if let Some(c) = comment_out {
                 if c == CommentType::SingleLine && a == '\n' {
                     comment_out = None;
-                } else if a == '*' && tmp.last() == Some(&'/') {
+                } else if a == '*' && tmp.last() == Some(&'/') { // TODO コード内の "*/" をコメントの終了と誤認しないようにする。
                     tmp.pop();
                     comment_out = None;
                 }
